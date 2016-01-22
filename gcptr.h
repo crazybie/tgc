@@ -31,13 +31,12 @@ namespace gc
 
         struct PointerBase
         {
-#ifdef _DEBUG
-            // make vs show the sub class in debugger.
-            virtual ~PointerBase() {}
-#endif
-            void setObjInfo(ObjInfo* n);
-            void unsetObjInfo(ObjInfo* n);
-            ObjInfo* rebindObj(void* obj);
+            ObjInfo* objInfo;
+
+            PointerBase() : objInfo(0) {}
+            PointerBase(void* obj);
+            ~PointerBase();
+            void registerPointer();
         };
     };
     
@@ -52,39 +51,38 @@ namespace gc
     public:
         // Constructors
 
-        gc_ptr() : info(0) {}
-        gc_ptr(T* obj, ObjInfo* info_) : ptr(obj), info(info_) { setObjInfo(info);  }
-        explicit gc_ptr(T* obj) : ptr(obj) { info = rebindObj(obj);  }
+        gc_ptr() { registerPointer(); }
+        gc_ptr(T* obj, ObjInfo* info_) { reset(obj, info_); }
+        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) { registerPointer(); }
         template <typename U>
-        gc_ptr(const gc_ptr<U>& r) : info(0) { reset(r.ptr, r.info);  }
-        gc_ptr(const gc_ptr& r) :info(0) { reset(r.ptr, r.info);  }
-        gc_ptr(gc_ptr&& r) { reset(r.ptr, r.info); r.info = 0; }
-        ~gc_ptr() { unsetObjInfo(info); }
+        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo);  }
+        gc_ptr(const gc_ptr& r) { reset(r.ptr, r.objInfo);  }
+        gc_ptr(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; }
 
         // Operators
 
         template <typename U>
-        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.info);  return *this; }
-        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.info);  return *this; }
-        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.info); r.info = 0; return *this; }
+        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo);  return *this; }
+        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.objInfo);  return *this; }
+        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; return *this; }
         T& operator*() const { return *ptr; }
         T* operator->() const { return ptr; }
         T* get() const { return ptr; }
         explicit operator bool() const { return ptr != 0; }
-        bool operator==(const gc_ptr& r)const { return info == r.info; }
-        bool operator!=(const gc_ptr& r)const { return info != r.info; }
+        bool operator==(const gc_ptr& r)const { return objInfo == r.objInfo; }
+        bool operator!=(const gc_ptr& r)const { return objInfo != r.objInfo; }
         void operator=(T*) = delete;
 
         // Methods
 
         static void destroy(void* obj) { ((T*)obj)->~T(); }
         void reset(T* obj) { gc_ptr(obj).swap(*this); }
-        void reset(T* obj, ObjInfo* n) { ptr = obj; info = n; setObjInfo(n); }
+        void reset(T* obj, ObjInfo* n) { ptr = obj; objInfo = n; registerPointer(); }
         void swap(gc_ptr& other)
         {
             T* temp = ptr;
-            ObjInfo* tinfo = info;
-            reset(other.ptr, other.info);
+            ObjInfo* tinfo = objInfo;
+            reset(other.ptr, other.objInfo);
             other.reset(temp, tinfo);
         }
 
@@ -92,8 +90,7 @@ namespace gc
         template <typename U>
         friend class gc_ptr;
 
-        T*          ptr;
-        ObjInfo*    info;
+        T*  ptr;
     };
 
 

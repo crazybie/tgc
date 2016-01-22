@@ -1,7 +1,7 @@
 #include "gcptr.h"
 #include <set>
 #include <stdint.h>
-#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace gc
@@ -14,10 +14,11 @@ namespace gc
 
         struct ObjInfo
         {
-            char*       object;
-            Dctor       destroy;  // call the proper destructor due to typeless char*.
-            size_t      size;
-            MarkColor   color;
+            char*                       object;
+            Dctor                       destroy;  // call the proper destructor due to typeless char*.
+            size_t                      size;
+            MarkColor                   color;
+            std::vector<PointerBase*>   memberPointers;
 
             struct Less
             {
@@ -33,8 +34,8 @@ namespace gc
 
         struct GC
         {
-            typedef std::set<ObjInfo*, ObjInfo::Less>           ObjInfoSet;
-            typedef std::unordered_map<PointerBase*, ObjInfo*>  GcPointers;
+            typedef std::set<ObjInfo*, ObjInfo::Less>   ObjInfoSet;
+            typedef std::unordered_set<PointerBase*>    GcPointers;
             
             GcPointers              pointers;
             ObjInfoSet              objInfoSet;
@@ -62,26 +63,33 @@ namespace gc
                 ObjInfo* objInfo = objInfoMem ? 
                     new (objInfoMem)ObjInfo(obj, size, destroy) : new ObjInfo(obj, size, destroy);
                 objInfoSet.insert(objInfo);
+                for (auto i : pointers) {
+                    if (objInfo->containsPointer(i)) {
+                        objInfo->memberPointers.push_back(i);
+                    }
+                }
                 return objInfo;
             }
-            void registerPointer(PointerBase* ptr, ObjInfo* node)
+            void registerPointer(PointerBase* ptr)
             {
-                if (!node) return;
-                pointers[ptr] = node;
-                if (node->color == MarkColor::Black) {
-                    node->color = MarkColor::Gray;
-                    grayObjs.push_back(node);
+                auto obj = ptr->objInfo;
+                pointers.insert(ptr);
+                if (!obj) return;
+                if (obj->color == MarkColor::Black) {
+                    obj->color = MarkColor::Gray;
+                    grayObjs.push_back(obj);
                 }
             }
-            void unregisterPointer(PointerBase* ptr, ObjInfo* node)
+            void unregisterPointer(PointerBase* ptr)
             {
                 pointers.erase(ptr);
-                if (!node) return;
-                if (node->color == MarkColor::Black) {
-                    for (auto j : pointers) {
-                        if (j.second->color == MarkColor::Black && node->containsPointer(j.first)) {
-                            j.second->color = MarkColor::Gray;
-                            grayObjs.push_back(j.second);
+                auto obj = ptr->objInfo;
+                if (!obj) return;
+                if (obj->color == MarkColor::Black) {
+                    for (auto j : obj->memberPointers) {
+                        if (j->objInfo->color == MarkColor::Black) {
+                            j->objInfo->color = MarkColor::Gray;
+                            grayObjs.push_back(j->objInfo);
                         }
                     }
                 }
@@ -90,20 +98,21 @@ namespace gc
             {
                 if (grayObjs.size() == 0) {
                     for (auto i : pointers) {
-                        if (i.second->color == MarkColor::White && !findOwnerObjInfo(i.first)) {
-                            i.second->color = MarkColor::Gray;
-                            grayObjs.push_back(i.second);
+                        if (!i->objInfo) continue;
+                        if (i->objInfo->color == MarkColor::White && !findOwnerObjInfo(i)) {
+                            i->objInfo->color = MarkColor::Gray;
+                            grayObjs.push_back(i->objInfo);
                         }
                     }
                 }
                 while (grayObjs.size() && stepCnt--) {
-                    ObjInfo* node = grayObjs.back();
+                    ObjInfo* obj = grayObjs.back();
                     grayObjs.pop_back();
-                    node->color = MarkColor::Black;
-                    for (auto j : pointers) {
-                        if (j.second->color == MarkColor::White && node->containsPointer(j.first)) {
-                            j.second->color = MarkColor::Gray;
-                            grayObjs.push_back(j.second);
+                    obj->color = MarkColor::Black;
+                    for (auto j : obj->memberPointers) {
+                        if (j->objInfo->color == MarkColor::White) {
+                            j->objInfo->color = MarkColor::Gray;
+                            grayObjs.push_back(j->objInfo);
                         }
                     }
                 }
@@ -133,10 +142,10 @@ namespace gc
 
         //////////////////////////////////////////////////////////////////////////
 
-        ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem) { return gGC.registerObj(obj, size, destroy, objInfoMem); }        
-        ObjInfo* PointerBase::rebindObj(void* obj) { ObjInfo* r = gGC.findOwnerObjInfo(obj); gGC.registerPointer(this, r); return r; }
-        void PointerBase::setObjInfo(ObjInfo* n) { gGC.registerPointer(this, n);  }
-        void PointerBase::unsetObjInfo(ObjInfo* n) { gGC.unregisterPointer(this, n); }
+        PointerBase::PointerBase(void* obj) { objInfo = gGC.findOwnerObjInfo(obj); }
+        PointerBase::~PointerBase() { gGC.unregisterPointer(this); }
+        void PointerBase::registerPointer() { gGC.registerPointer(this);  }
+        ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem) { return gGC.registerObj(obj, size, destroy, objInfoMem); }
     }
 
     int GcCollect(int step) { return details::gGC.GcCollect(step); }
