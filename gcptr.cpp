@@ -8,38 +8,34 @@ namespace gc
 {
     namespace details
     {
-        typedef void(*Dctor)(void*);
 
         enum class MarkColor : char { White, Gray, Black };
 
         struct ObjInfo
         {
-            char*                       object;
+            char*                       obj;
             Dctor                       destroy;  // call the proper destructor due to typeless char*.
             size_t                      size;
-            MarkColor                   color;
             std::vector<PointerBase*>   memberPointers;
+            MarkColor                   color;
 
             struct Less
             {
-                bool operator()(const ObjInfo* x, const ObjInfo* y) const { return x->object + x->size <= y->object; }
+                bool operator()(const ObjInfo* x, const ObjInfo* y) const { return x->obj + x->size <= y->obj; }
             };
             
-            ObjInfo(void* obj, int size_, Dctor dctor) : object((char*)obj), size(size_), destroy(dctor), color(MarkColor::White) {}
-            ~ObjInfo() { if (destroy) destroy(object); }
-            bool containsPointer(void* ptr) { return object <= ptr && ptr < object + size; }
+            ObjInfo(void* o, int sz, Dctor dctor) : obj((char*)o), size(sz), destroy(dctor), color(MarkColor::White) {}
+            ~ObjInfo() { if (destroy) destroy(obj); }
+            bool containsPointer(void* ptr) { return obj <= ptr && ptr < obj + size; }
         };
 
         const int ObjInfoSize = sizeof(ObjInfo);
 
         struct GC
         {
-            typedef std::set<ObjInfo*, ObjInfo::Less>   ObjInfoSet;
-            typedef std::unordered_set<PointerBase*>    GcPointers;
-            
-            GcPointers              pointers;
-            ObjInfoSet              objInfoSet;
-            std::vector<ObjInfo*>   grayObjs;
+            std::unordered_set<PointerBase*>    pointers;
+            std::set<ObjInfo*, ObjInfo::Less>   objInfoSet;
+            std::vector<ObjInfo*>               grayObjs;
 
             GC()
             {
@@ -58,14 +54,14 @@ namespace gc
                     return 0;
                 return *i;
             }
-            ObjInfo* registerObj(void* obj, int size, Dctor destroy, char* objInfoMem)
+            ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem)
             {
-                ObjInfo* objInfo = objInfoMem ? 
-                    new (objInfoMem)ObjInfo(obj, size, destroy) : new ObjInfo(obj, size, destroy);
+                ObjInfo* objInfo = mem ? new (mem)ObjInfo(o, sz, dctor) : new ObjInfo(o, sz, dctor);
                 objInfoSet.insert(objInfo);
                 for (auto i : pointers) {
                     if (objInfo->containsPointer(i)) {
                         objInfo->memberPointers.push_back(i);
+                        i->owner = objInfo;
                     }
                 }
                 return objInfo;
@@ -99,7 +95,7 @@ namespace gc
                 if (grayObjs.size() == 0) {
                     for (auto i : pointers) {
                         if (!i->objInfo) continue;
-                        if (i->objInfo->color == MarkColor::White && !findOwnerObjInfo(i)) {
+                        if (i->objInfo->color == MarkColor::White && !i->owner) {
                             i->objInfo->color = MarkColor::Gray;
                             grayObjs.push_back(i->objInfo);
                         }
@@ -142,10 +138,10 @@ namespace gc
 
         //////////////////////////////////////////////////////////////////////////
 
-        PointerBase::PointerBase(void* obj) { objInfo = gGC.findOwnerObjInfo(obj); }
+        PointerBase::PointerBase(void* obj) { owner = 0; objInfo = gGC.findOwnerObjInfo(obj); }
         PointerBase::~PointerBase() { gGC.unregisterPointer(this); }
         void PointerBase::registerPointer() { gGC.registerPointer(this);  }
-        ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem) { return gGC.registerObj(obj, size, destroy, objInfoMem); }
+        ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem) { return gGC.registerObj(o, sz, dctor, mem); }
     }
 
     int GcCollect(int step) { return details::gGC.GcCollect(step); }

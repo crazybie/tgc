@@ -29,7 +29,7 @@ static int gcobjcount = 0;
 
 void _GC(int line)
 {
-    auto freeCnt = GcCollect(112);
+    auto freeCnt = GcCollect(2);
     gcobjcount += freeCnt;
 #ifndef PROFILE
     printf("---- GC at line %d ----\n", line);

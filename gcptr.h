@@ -25,15 +25,17 @@ namespace gc
 {
     namespace details
     {
+        typedef void(*Dctor)(void*);        
         struct ObjInfo;
         extern const int ObjInfoSize;
-        ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem);
+        ObjInfo* registerObj(void* obj, int size, Dctor dctor, char* mem);
 
         struct PointerBase
         {
             ObjInfo* objInfo;
+            ObjInfo* owner;
 
-            PointerBase() : objInfo(0) {}
+            PointerBase() : objInfo(0), owner(0){}
             PointerBase(void* obj);
             ~PointerBase();
             void registerPointer();
@@ -76,14 +78,14 @@ namespace gc
         // Methods
 
         static void destroy(void* obj) { ((T*)obj)->~T(); }
-        void reset(T* obj) { gc_ptr(obj).swap(*this); }
-        void reset(T* obj, ObjInfo* n) { ptr = obj; objInfo = n; registerPointer(); }
-        void swap(gc_ptr& other)
+        void reset(T* o) { gc_ptr(o).swap(*this); }
+        void reset(T* o, ObjInfo* n) { ptr = o; objInfo = n; registerPointer(); }
+        void swap(gc_ptr& r)
         {
             T* temp = ptr;
             ObjInfo* tinfo = objInfo;
-            reset(other.ptr, other.objInfo);
-            other.reset(temp, tinfo);
+            reset(r.ptr, r.objInfo);
+            r.reset(temp, tinfo);
         }
 
     private:
