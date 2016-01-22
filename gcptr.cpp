@@ -66,8 +66,8 @@ namespace gc
             }
             void registerPointer(PointerBase* ptr, ObjInfo* node)
             {
+                if (!node) return;
                 pointers[ptr] = node;
-                if (!node)return;
                 if (node->color == MarkColor::Black) {
                     node->color = MarkColor::Gray;
                     grayObjs.push_back(node);
@@ -79,7 +79,7 @@ namespace gc
                 if (!node) return;
                 if (node->color == MarkColor::Black) {
                     for (auto j : pointers) {
-                        if (node->containsPointer(j.first)) {
+                        if (j.second->color == MarkColor::Black && node->containsPointer(j.first)) {
                             j.second->color = MarkColor::Gray;
                             grayObjs.push_back(j.second);
                         }
@@ -90,7 +90,7 @@ namespace gc
             {
                 if (grayObjs.size() == 0) {
                     for (auto i : pointers) {
-                        if (!findOwnerObjInfo(i.first) && i.second->color == MarkColor::White) {
+                        if (i.second->color == MarkColor::White && !findOwnerObjInfo(i.first)) {
                             i.second->color = MarkColor::Gray;
                             grayObjs.push_back(i.second);
                         }
@@ -101,11 +101,9 @@ namespace gc
                     grayObjs.pop_back();
                     node->color = MarkColor::Black;
                     for (auto j : pointers) {
-                        if (node->containsPointer(j.first)) {
-                            if (j.second->color == MarkColor::White) {
-                                j.second->color = MarkColor::Gray;
-                                grayObjs.push_back(j.second);
-                            }
+                        if (j.second->color == MarkColor::White && node->containsPointer(j.first)) {
+                            j.second->color = MarkColor::Gray;
+                            grayObjs.push_back(j.second);
                         }
                     }
                 }
