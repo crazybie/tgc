@@ -5,8 +5,6 @@
 #include <vector>
 #include <windows.h>
 
-//#define	MANUAL_COLLECT
-//#define	COLLECT_ON_NEW
 
 using namespace std;
 using namespace gc;
@@ -102,23 +100,7 @@ struct d2 : public b1, public b2
 	}
 };
 
-struct circ
-{
-	circ(const string& s) : name(s)
-	{
-		cout << "Creating circ(" << name << ")." << endl;
-		objcount++;
-	}
-	~circ()
-	{
-		cout << "Destroying circ(" << name << ")." << endl;
-		objcount--;
-	}
 
-	gc_ptr<circ> ptr;
-
-	string name;
-};
 
 struct rc
 {
@@ -182,22 +164,36 @@ void test()
 	GC();
 }
 
+struct circ
+{
+    circ(const string& s) : name(s)
+    {
+        cout << "Creating circ(" << name << ")." << endl;
+        objcount++;
+    }
+    ~circ()
+    {
+        cout << "Destroying circ(" << name << ")." << endl;
+        objcount--;
+    }
 
+    gc_ptr<circ> ptr;
+
+    string name;
+};
 void testCirc()
 {   
     PROFILE_LOOP
     {
-        gc_ptr<circ> p5(make_gc<circ>("root"));
+        auto p5 = make_gc<circ>("root");
         {
-            gc_ptr<circ> p6(make_gc<circ>("first"));
-            gc_ptr<circ> p7(make_gc<circ>("second"));
-            gc_ptr<circ> p8(make_gc<circ>("third"));
+            auto p6 = make_gc<circ>("first");
+            auto p7 = make_gc<circ>("second");
 
             p5->ptr = p6;
 
             p6->ptr = p7;
-            p7->ptr = p8;
-            p8->ptr = p6;
+            p7->ptr = p6;
 
             GC();
         }
@@ -268,11 +264,10 @@ struct g
 		int i = 0;
 	}
 };
-gc_ptr<g> global(make_gc<g>());
+//gc_ptr<g> global(make_gc<g>());
 
 int main()
-{
-    
+{    
 #ifdef PROFILE
     for (int i = 0; i < 10; i++) 
 #endif

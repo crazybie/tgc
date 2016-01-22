@@ -33,7 +33,12 @@ namespace gc
 
         struct PointerBase
         {
+#ifdef _DEBUG
+            // make vs show the sub class in debugger.
+            virtual ~PointerBase() {}
+#endif
             void setObjInfo(ObjInfo* n);
+            void unsetObjInfo(ObjInfo* n);
             ObjInfo* rebindObj(void* obj);
         };
     };
@@ -56,7 +61,7 @@ namespace gc
         gc_ptr(const gc_ptr<U>& r) : info(0) { reset(r.ptr, r.info); incRef(info); }
         gc_ptr(const gc_ptr& r) :info(0) { reset(r.ptr, r.info); incRef(info); }
         gc_ptr(gc_ptr&& r) { reset(r.ptr, r.info); r.info = 0; }
-        ~gc_ptr() { decRef(info); setObjInfo(0); }
+        ~gc_ptr() { decRef(info); unsetObjInfo(info); }
 
         // Operators
 

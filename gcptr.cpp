@@ -14,7 +14,7 @@ namespace gc
 
         struct ObjInfo
         {
-            void*       object;
+            char*       object;
             Dctor       destroy;  // call the proper destructor due to typeless char*.
             size_t      size;
             int         refcnt;
@@ -23,15 +23,12 @@ namespace gc
 
             struct Less
             {
-                bool operator()(const ObjInfo* x, const ObjInfo* y) const 
-                { 
-                    return (char*)x->object + x->size <= (char*)y->object;
-                }
+                bool operator()(const ObjInfo* x, const ObjInfo* y) const { return x->object + x->size <= y->object; }
             };
             
-            ObjInfo(void* obj, int size_, Dctor dctor) : object(obj), size(size_), destroy(dctor), color(MarkColor::White), refcnt(0), destructing(false) {}
+            ObjInfo(void* obj, int size_, Dctor dctor) : object((char*)obj), size(size_), destroy(dctor), color(MarkColor::White), refcnt(0), destructing(false) {}
             ~ObjInfo() { if (destroy) destroy(object); }
-            bool containsPointer(void* ptr) { return (char*)object <= (char*)ptr && (char*)ptr < (char*)object + size; }
+            bool containsPointer(void* ptr) { return object <= ptr && ptr < object + size; }
         };
 
         const int ObjInfoSize = sizeof(ObjInfo);
@@ -51,9 +48,12 @@ namespace gc
                 grayObjs.reserve(1000);
                 pointers.reserve(1000);
             }
-            ~GC() { gc::GcCollect(INT32_MAX); }
+            ~GC() 
+            { 
+                gc::GcCollect(INT32_MAX); 
+            }
             
-            ObjInfo* findObjInfo(void* obj)
+            ObjInfo* findOwnerObjInfo(void* obj)
             {
                 ObjInfo temp(obj, 0, 0);
                 auto i = objInfoSet.lower_bound(&temp);
@@ -78,12 +78,20 @@ namespace gc
             void unregisterPointer(PointerBase* ptr, ObjInfo* node)
             {
                 pointers.erase(ptr);
+                if (node->color == MarkColor::Black) {
+                    for (auto j : pointers) {
+                        if (node->containsPointer(j.first)) {
+                            j.second->color = MarkColor::Gray;
+                            grayObjs.insert(j.second);
+                        }
+                    }
+                }
             }
             void IncrementalMark(int stepCnt)
             {
                 if (grayObjs.size() == 0) {
                     for (auto i : pointers) {
-                        if (!findObjInfo(i.first)) {
+                        if (!findOwnerObjInfo(i.first) && i.second->color == MarkColor::White) {
                             i.second->color = MarkColor::Gray;
                             grayObjs.insert(i.second);
                         }
@@ -134,8 +142,13 @@ namespace gc
 
         ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem) { return gGC.registerObj(obj, size, destroy, objInfoMem); }
         void incRef(ObjInfo* n) { if (!n) return; n->refcnt++; }
-        ObjInfo* PointerBase::rebindObj(void* obj) { ObjInfo* r = gGC.findObjInfo(obj); gGC.registerPointer(this, r); return r; }
-        void PointerBase::setObjInfo(ObjInfo* n) { if (n) gGC.registerPointer(this, n);  else gGC.unregisterPointer(this, n); }
+        ObjInfo* PointerBase::rebindObj(void* obj) { ObjInfo* r = gGC.findOwnerObjInfo(obj); gGC.registerPointer(this, r); return r; }
+        void PointerBase::setObjInfo(ObjInfo* n) { gGC.registerPointer(this, n);  }
+
+        void PointerBase::unsetObjInfo(ObjInfo* n)
+        {
+            gGC.unregisterPointer(this, n);
+        }
 
         void decRef(ObjInfo* n)
         {
