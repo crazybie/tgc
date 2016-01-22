@@ -27,8 +27,6 @@ namespace gc
     {
         struct ObjInfo;
         extern const int ObjInfoSize;
-        void incRef(ObjInfo* n);
-        void decRef(ObjInfo* n);
         ObjInfo* registerObj(void* obj, int size, void(*destroy)(void*), char* objInfoMem);
 
         struct PointerBase
@@ -55,20 +53,20 @@ namespace gc
         // Constructors
 
         gc_ptr() : info(0) {}
-        gc_ptr(T* obj, ObjInfo* info_) : ptr(obj), info(info_) { setObjInfo(info); incRef(info); }
-        explicit gc_ptr(T* obj) : ptr(obj) { info = rebindObj(obj); incRef(info); }
+        gc_ptr(T* obj, ObjInfo* info_) : ptr(obj), info(info_) { setObjInfo(info);  }
+        explicit gc_ptr(T* obj) : ptr(obj) { info = rebindObj(obj);  }
         template <typename U>
-        gc_ptr(const gc_ptr<U>& r) : info(0) { reset(r.ptr, r.info); incRef(info); }
-        gc_ptr(const gc_ptr& r) :info(0) { reset(r.ptr, r.info); incRef(info); }
+        gc_ptr(const gc_ptr<U>& r) : info(0) { reset(r.ptr, r.info);  }
+        gc_ptr(const gc_ptr& r) :info(0) { reset(r.ptr, r.info);  }
         gc_ptr(gc_ptr&& r) { reset(r.ptr, r.info); r.info = 0; }
-        ~gc_ptr() { decRef(info); unsetObjInfo(info); }
+        ~gc_ptr() { unsetObjInfo(info); }
 
         // Operators
 
         template <typename U>
-        gc_ptr& operator=(const gc_ptr<U>& r) { decRef(info); reset(r.ptr, r.info); incRef(info); return *this; }
-        gc_ptr& operator=(const gc_ptr& r) { decRef(info); reset(r.ptr, r.info); incRef(info); return *this; }
-        gc_ptr& operator=(gc_ptr&& r) { decRef(info); reset(r.ptr, r.info); r.info = 0; return *this; }
+        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.info);  return *this; }
+        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.info);  return *this; }
+        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.info); r.info = 0; return *this; }
         T& operator*() const { return *ptr; }
         T* operator->() const { return ptr; }
         T* get() const { return ptr; }

@@ -18,7 +18,7 @@ using namespace gc;
 #define cout comment(/)
 #define comment(a) /a
 #else
-#define PROFILE_LOOP
+#define PROFILE_LOOP for(int i=0;i<2;i++)
 #endif
 
 static int objcount = 0;
@@ -29,7 +29,7 @@ static int gcobjcount = 0;
 
 void _GC(int line)
 {
-    auto freeCnt = GcCollect(2);
+    auto freeCnt = GcCollect(112);
     gcobjcount += freeCnt;
 #ifndef PROFILE
     printf("---- GC at line %d ----\n", line);
@@ -183,7 +183,7 @@ struct circ
 };
 void testCirc()
 {   
-    PROFILE_LOOP
+    PROFILE_LOOP        
     {
         auto p5 = make_gc<circ>("root");
         {
@@ -264,7 +264,7 @@ struct g
 		int i = 0;
 	}
 };
-//gc_ptr<g> global(make_gc<g>());
+gc_ptr<g> global(make_gc<g>());
 
 int main()
 {    
@@ -272,10 +272,10 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-        //testInsert();
-        //testEmpty();
-        //test();
-        //testMoveCtor();
+        testInsert();
+        testEmpty();
+        test();
+        testMoveCtor();
         testCirc();
     }
 #undef cout
