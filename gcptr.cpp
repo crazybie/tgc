@@ -21,7 +21,7 @@ namespace gc
 
             struct Less
             {
-                bool operator()(const ObjInfo* x, const ObjInfo* y) const { return x->obj + x->size <= y->obj; }
+                bool operator()(ObjInfo* x, ObjInfo* y) { return x->obj + x->size <= y->obj; }
             };
             
             ObjInfo(void* o, int sz, Dctor dctor) : obj((char*)o), size(sz), destroy(dctor), color(MarkColor::White) {}
@@ -30,6 +30,7 @@ namespace gc
         };
 
         const int ObjInfoSize = sizeof(ObjInfo);
+        ObjInfo* kObjInfo_Uninit = (ObjInfo*)-1;
 
         struct GC
         {
@@ -58,18 +59,12 @@ namespace gc
             {
                 ObjInfo* objInfo = mem ? new (mem)ObjInfo(o, sz, dctor) : new ObjInfo(o, sz, dctor);
                 objInfoSet.insert(objInfo);
-                for (auto i : pointers) {
-                    if (objInfo->containsPointer(i)) {
-                        objInfo->memberPointers.push_back(i);
-                        i->owner = objInfo;
-                    }
-                }
                 return objInfo;
             }
             void registerPointer(PointerBase* ptr)
             {
-                auto obj = ptr->objInfo;
                 pointers.insert(ptr);
+                auto obj = ptr->getObjInfo();
                 if (!obj) return;
                 if (obj->color == MarkColor::Black) {
                     obj->color = MarkColor::Gray;
@@ -79,13 +74,14 @@ namespace gc
             void unregisterPointer(PointerBase* ptr)
             {
                 pointers.erase(ptr);
-                auto obj = ptr->objInfo;
+                auto obj = ptr->getObjInfo();
                 if (!obj) return;
                 if (obj->color == MarkColor::Black) {
                     for (auto j : obj->memberPointers) {
-                        if (j->objInfo->color == MarkColor::Black) {
-                            j->objInfo->color = MarkColor::Gray;
-                            grayObjs.push_back(j->objInfo);
+                        auto o2 = j->getObjInfo();
+                        if (o2->color == MarkColor::Black) {
+                            o2->color = MarkColor::Gray;
+                            grayObjs.push_back(o2);
                         }
                     }
                 }
@@ -94,10 +90,11 @@ namespace gc
             {
                 if (grayObjs.size() == 0) {
                     for (auto i : pointers) {
-                        if (!i->objInfo) continue;
-                        if (i->objInfo->color == MarkColor::White && !i->owner) {
-                            i->objInfo->color = MarkColor::Gray;
-                            grayObjs.push_back(i->objInfo);
+                        auto o = i->getObjInfo();
+                        if (!o) continue;                        
+                        if (i->isRoot() && o->color == MarkColor::White) {
+                            o->color = MarkColor::Gray;
+                            grayObjs.push_back(o);
                         }
                     }
                 }
@@ -106,9 +103,10 @@ namespace gc
                     grayObjs.pop_back();
                     obj->color = MarkColor::Black;
                     for (auto j : obj->memberPointers) {
-                        if (j->objInfo->color == MarkColor::White) {
-                            j->objInfo->color = MarkColor::Gray;
-                            grayObjs.push_back(j->objInfo);
+                        auto o = j->getObjInfo();
+                        if (o->color == MarkColor::White) {
+                            o->color = MarkColor::Gray;
+                            grayObjs.push_back(o);
                         }
                     }
                 }
@@ -137,11 +135,21 @@ namespace gc
         static GC gGC;
 
         //////////////////////////////////////////////////////////////////////////
-
-        PointerBase::PointerBase(void* obj) { owner = 0; objInfo = gGC.findOwnerObjInfo(obj); }
+        ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem) { return gGC.registerObj(o, sz, dctor, mem); }
+        PointerBase::PointerBase(void* obj) { owner = kObjInfo_Uninit; objInfo = gGC.findOwnerObjInfo(obj); }
         PointerBase::~PointerBase() { gGC.unregisterPointer(this); }
         void PointerBase::registerPointer() { gGC.registerPointer(this);  }
-        ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem) { return gGC.registerObj(o, sz, dctor, mem); }
+
+        bool PointerBase::isRoot()
+        {
+            if (owner == kObjInfo_Uninit) {
+                owner = gGC.findOwnerObjInfo(this);
+                if (owner) {                    
+                    owner->memberPointers.push_back(this);
+                }
+            }
+            return !owner;
+        }
     }
 
     int GcCollect(int step) { return details::gGC.GcCollect(step); }

@@ -27,18 +27,28 @@ namespace gc
     {
         typedef void(*Dctor)(void*);        
         struct ObjInfo;
-        extern const int ObjInfoSize;
         ObjInfo* registerObj(void* obj, int size, Dctor dctor, char* mem);
+
+        extern const int ObjInfoSize;
+        extern ObjInfo* kObjInfo_Uninit;
 
         struct PointerBase
         {
+        protected:
             ObjInfo* objInfo;
             ObjInfo* owner;
 
-            PointerBase() : objInfo(0), owner(0){}
+            PointerBase() : objInfo(0), owner(kObjInfo_Uninit) {}
             PointerBase(void* obj);
+#ifdef _DEBUG
+            virtual ~PointerBase();
+#else
             ~PointerBase();
-            void registerPointer();
+#endif // _DEBUG
+            void registerPointer(); 
+        public:
+            bool isRoot();            
+            ObjInfo* getObjInfo() { return objInfo; }
         };
     };
     
@@ -48,12 +58,12 @@ namespace gc
 
 
     template <typename T>
-    class gc_ptr : protected details::PointerBase
+    class gc_ptr : public details::PointerBase
     {
     public:
         // Constructors
 
-        gc_ptr() { registerPointer(); }
+        gc_ptr():ptr(0) { registerPointer(); }
         gc_ptr(T* obj, ObjInfo* info_) { reset(obj, info_); }
         explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) { registerPointer(); }
         template <typename U>
