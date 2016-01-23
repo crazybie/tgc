@@ -5,6 +5,8 @@
 #include <vector>
 #include <windows.h>
 
+#include <vld.h>
+
 
 using namespace std;
 using namespace gc;
@@ -14,7 +16,7 @@ using namespace gc;
 #endif
 
 #ifdef PROFILE
-#define PROFILE_LOOP for(int i=0;i<20000*(rand()%5+5);i++)
+#define PROFILE_LOOP for(int i=0;i<200*(rand()%5+5);i++)
 #define cout comment(/)
 #define comment(a) /a
 #else
@@ -66,7 +68,7 @@ struct b2
 	virtual ~b2()
 	{
 		cout << "Destroying b2(" << name << ")." << endl;
-		objcount--;
+        objcount--;
 	}
 
 	string name;
@@ -112,7 +114,7 @@ struct rc
 	}
 	~rc()
 	{
-        auto i = gc_ptr_from_this(this);
+        auto i = gc_from_this(this);
         objcount--;
 	}
 };
@@ -150,8 +152,8 @@ void test()
             // line of code as well and notice the behavior change at run time.
             //		p1 = &p3->name;
             gc_ptr<b1> p4(make_gc<d2>("second"));
-            gc_ptr<b2> pz(dynamic_cast<b2*>(p4.get()));
-            if (static_cast<void*>(p4.get()) == static_cast<void*>(pz.get()))
+            gc_ptr<b2> pz(dynamic_cast<b2*>(p4.operator ->()));
+            if (static_cast<void*>(p4.operator ->()) == static_cast<void*>(pz.operator ->()))
                 throw std::runtime_error("unexpected");
 
 
@@ -279,7 +281,7 @@ int main()
         testCirc();
     }
 #undef cout
-    GcCollect(99999999);
+    GcCollect(1000);
 	cout << ((objcount == 0) ? "success!" : "fail!") << endl;
     cout << "gc obj cnt" << gcobjcount << endl;
     return 0;

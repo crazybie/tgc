@@ -8,8 +8,7 @@ namespace gc
 {
     namespace details
     {
-
-        enum class MarkColor : char { White, Gray, Black };
+        enum class MarkColor : char { White, Black };
 
         struct ObjInfo
         {
@@ -38,14 +37,18 @@ namespace gc
             std::set<ObjInfo*, ObjInfo::Less>   objInfoSet;
             std::vector<ObjInfo*>               grayObjs;
 
+            enum class State { Idle, Marking, Sweeping } state;
+
             GC()
             {
-                grayObjs.reserve(1000);
-                pointers.reserve(1000);
+                state = State::Idle;
+                grayObjs.reserve(1024);
+                pointers.reserve(1024);
             }
             ~GC() 
             { 
-                gc::GcCollect(INT32_MAX); 
+                while (objInfoSet.size()) 
+                    gc::GcCollect(INT32_MAX);
             }
             ObjInfo* findOwnerObjInfo(void* obj)
             {
@@ -57,76 +60,63 @@ namespace gc
             }
             ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem)
             {
-                ObjInfo* objInfo = mem ? new (mem)ObjInfo(o, sz, dctor) : new ObjInfo(o, sz, dctor);
+                ObjInfo* objInfo = new (mem)ObjInfo(o, sz, dctor);
                 objInfoSet.insert(objInfo);
                 return objInfo;
             }
-            void registerPointer(PointerBase* ptr)
+            void onPointerUpdate(PointerBase* ptr)
             {
-                pointers.insert(ptr);
-                auto obj = ptr->getObjInfo();
-                if (!obj) return;
-                if (obj->color == MarkColor::Black) {
-                    obj->color = MarkColor::Gray;
-                    grayObjs.push_back(obj);
+                if (state == State::Marking) {
+                    markAsRoot(ptr);
                 }
             }
-            void unregisterPointer(PointerBase* ptr)
+            void markAsRoot(PointerBase* i)
             {
-                pointers.erase(ptr);
-                auto obj = ptr->getObjInfo();
-                if (!obj) return;
-                if (obj->color == MarkColor::Black) {
-                    for (auto j : obj->memberPointers) {
-                        auto o2 = j->getObjInfo();
-                        if (o2->color == MarkColor::Black) {
-                            o2->color = MarkColor::Gray;
-                            grayObjs.push_back(o2);
-                        }
-                    }
+                if (!i->objInfo) return;
+                if (i->isRoot() && i->objInfo->color == MarkColor::White) {
+                    grayObjs.push_back(i->objInfo);
                 }
             }
-            void IncrementalMark(int stepCnt)
+            int collect(int stepCnt)
             {
-                if (grayObjs.size() == 0) {
-                    for (auto i : pointers) {
-                        auto o = i->getObjInfo();
-                        if (!o) continue;                        
-                        if (i->isRoot() && o->color == MarkColor::White) {
-                            o->color = MarkColor::Gray;
-                            grayObjs.push_back(o);
-                        }
-                    }
-                }
-                while (grayObjs.size() && stepCnt--) {
-                    ObjInfo* obj = grayObjs.back();
-                    grayObjs.pop_back();
-                    obj->color = MarkColor::Black;
-                    for (auto j : obj->memberPointers) {
-                        auto o = j->getObjInfo();
-                        if (o->color == MarkColor::White) {
-                            o->color = MarkColor::Gray;
-                            grayObjs.push_back(o);
-                        }
-                    }
-                }
-            }
-
-            int GcCollect(int stepCnt)
-            {
-                IncrementalMark(stepCnt);
-                if (grayObjs.size() != 0) return 0;
                 int sweptCnt = 0;
-                for (auto i = objInfoSet.begin(); i != objInfoSet.end();) {
-                    ObjInfo* node = *i;
-                    if (node->color == MarkColor::White) {
-                        sweptCnt++;
-                        delete node;
-                        i = objInfoSet.erase(i);
-                        continue;
+                switch(state)
+                {
+                case State::Idle: 
+                    state = State::Marking;
+                    for (auto i : pointers) {
+                        markAsRoot(i);
                     }
-                    node->color = MarkColor::White;
-                    ++i;
+                    break;
+
+                case State::Marking:
+                    while (grayObjs.size() && stepCnt--) {
+                        ObjInfo* obj = grayObjs.back();
+                        grayObjs.pop_back();
+                        obj->color = MarkColor::Black;
+                        for (auto j : obj->memberPointers) {
+                            if (j->objInfo->color == MarkColor::White) {
+                                grayObjs.push_back(j->objInfo);
+                            }
+                        }
+                    }
+                    if (grayObjs.size() == 0) state = State::Sweeping;
+                    break;
+
+                case State::Sweeping:
+                    state = State::Idle;
+                    for (auto i = objInfoSet.begin(); i != objInfoSet.end();) {
+                        ObjInfo* obj = *i;
+                        if (obj->color == MarkColor::White) {
+                            sweptCnt++;
+                            delete obj;
+                            i = objInfoSet.erase(i);
+                            continue;
+                        }
+                        obj->color = MarkColor::White;
+                        ++i;
+                    }
+                    break;
                 }
                 return sweptCnt;
             }
@@ -135,10 +125,13 @@ namespace gc
         static GC gGC;
 
         //////////////////////////////////////////////////////////////////////////
+
         ObjInfo* registerObj(void* o, int sz, Dctor dctor, char* mem) { return gGC.registerObj(o, sz, dctor, mem); }
-        PointerBase::PointerBase(void* obj) { owner = kObjInfo_Uninit; objInfo = gGC.findOwnerObjInfo(obj); }
-        PointerBase::~PointerBase() { gGC.unregisterPointer(this); }
-        void PointerBase::registerPointer() { gGC.registerPointer(this);  }
+
+        PointerBase::PointerBase() : objInfo(0), owner(kObjInfo_Uninit) { gGC.pointers.insert(this); }
+        PointerBase::PointerBase(void* obj) : owner(kObjInfo_Uninit), objInfo(gGC.findOwnerObjInfo(obj)) { gGC.pointers.insert(this); }
+        PointerBase::~PointerBase() { gGC.pointers.erase(this); }
+        void PointerBase::onPointerUpdate() { gGC.onPointerUpdate(this); }
 
         bool PointerBase::isRoot()
         {
@@ -152,7 +145,7 @@ namespace gc
         }
     }
 
-    int GcCollect(int step) { return details::gGC.GcCollect(step); }
+    int GcCollect(int step) { return details::gGC.collect(step); }
 }
 
 

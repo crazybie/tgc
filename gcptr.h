@@ -32,23 +32,22 @@ namespace gc
         extern const int ObjInfoSize;
         extern ObjInfo* kObjInfo_Uninit;
 
-        struct PointerBase
+        class PointerBase
         {
-        protected:
-            ObjInfo* objInfo;
+        public:
             ObjInfo* owner;
+            ObjInfo* objInfo;
 
-            PointerBase() : objInfo(0), owner(kObjInfo_Uninit) {}
+            PointerBase();
             PointerBase(void* obj);
+
 #ifdef _DEBUG
             virtual ~PointerBase();
 #else
             ~PointerBase();
-#endif // _DEBUG
-            void registerPointer(); 
-        public:
-            bool isRoot();            
-            ObjInfo* getObjInfo() { return objInfo; }
+#endif            
+            bool isRoot();
+            void onPointerUpdate();
         };
     };
     
@@ -58,16 +57,16 @@ namespace gc
 
 
     template <typename T>
-    class gc_ptr : public details::PointerBase
+    class gc_ptr : protected details::PointerBase
     {
     public:
         // Constructors
 
-        gc_ptr():ptr(0) { registerPointer(); }
-        gc_ptr(T* obj, ObjInfo* info_) { reset(obj, info_); }
-        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) { registerPointer(); }
+        gc_ptr() : ptr(0) { }
+        gc_ptr(T* obj, ObjInfo* info_) { reset(obj, info_);}
+        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) { }
         template <typename U>
-        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo);  }
+        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo); }
         gc_ptr(const gc_ptr& r) { reset(r.ptr, r.objInfo);  }
         gc_ptr(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; }
 
@@ -77,19 +76,18 @@ namespace gc
         gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo);  return *this; }
         gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.objInfo);  return *this; }
         gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; return *this; }
-        T& operator*() const { return *ptr; }
-        T* operator->() const { return ptr; }
-        T* get() const { return ptr; }
+        T* operator->() const { return ptr; }        
         explicit operator bool() const { return ptr != 0; }
         bool operator==(const gc_ptr& r)const { return objInfo == r.objInfo; }
         bool operator!=(const gc_ptr& r)const { return objInfo != r.objInfo; }
         void operator=(T*) = delete;
+        gc_ptr& operator=(decltype(nullptr)) { return *this = gc_ptr(); }
 
         // Methods
 
         static void destroy(void* obj) { ((T*)obj)->~T(); }
         void reset(T* o) { gc_ptr(o).swap(*this); }
-        void reset(T* o, ObjInfo* n) { ptr = o; objInfo = n; registerPointer(); }
+        void reset(T* o, ObjInfo* n) { ptr = o; objInfo = n; onPointerUpdate(); }
         void swap(gc_ptr& r)
         {
             T* temp = ptr;
@@ -115,6 +113,6 @@ namespace gc
     }
 
     template<typename T>
-    gc_ptr<T> gc_ptr_from_this(T* t) { return gc_ptr<T>(t); }
+    gc_ptr<T> gc_from_this(T* t) { return gc_ptr<T>(t); }
 }
 
