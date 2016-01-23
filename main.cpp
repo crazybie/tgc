@@ -32,6 +32,8 @@ static int gcobjcount = 0;
 void _GC(int line)
 {
     auto freeCnt = GcCollect(2);
+    freeCnt += GcCollect(2);
+    freeCnt += GcCollect(2);
     gcobjcount += freeCnt;
 #ifndef PROFILE
     printf("---- GC at line %d ----\n", line);
@@ -197,10 +199,10 @@ void testCirc()
             p6->ptr = p7;
             p7->ptr = p6;
 
-            //GC();
+            GC();
         }
     }
-    //GC();
+    GC();
 }
 
 void testMoveCtor()
@@ -274,12 +276,14 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-        //testInsert();
-        //testEmpty();
-        //test();
-        //testMoveCtor();
+        testInsert();
+        testEmpty();
+        test();
+        testMoveCtor();
         testCirc();
     }
 #undef cout    
-	return 0;
+    for (int i = 0; i < 3; i++)GcCollect(1000);
+    cout << (!objcount ? "ok" : "failed") << endl;
+    return objcount;
 }
