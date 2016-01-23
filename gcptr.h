@@ -27,10 +27,9 @@ namespace gc
     {
         typedef void(*Dctor)(void*);        
         struct ObjInfo;
-        ObjInfo* registerObj(void* obj, int size, Dctor dctor, char* mem);
+        ObjInfo* newObjInfo(void* obj, int size, Dctor dctor, char* mem);
 
         extern const int ObjInfoSize;
-        extern ObjInfo* kObjInfo_Uninit;
 
         class PointerBase
         {
@@ -45,8 +44,7 @@ namespace gc
             virtual ~PointerBase();
 #else
             ~PointerBase();
-#endif            
-            bool isRoot();
+#endif
             void onPointerUpdate();
         };
     };
@@ -109,7 +107,7 @@ namespace gc
     {
         char* buf = new char[sizeof(T) + details::ObjInfoSize];
         T* obj = new (buf + details::ObjInfoSize) T(std::forward<Args>(args)...);
-        return gc_ptr<T>(obj, details::registerObj(obj, sizeof(T), &gc_ptr<T>::destroy, buf));
+        return gc_ptr<T>(obj, details::newObjInfo(obj, sizeof(T), &gc_ptr<T>::destroy, buf));
     }
 
     template<typename T>

@@ -197,10 +197,10 @@ void testCirc()
             p6->ptr = p7;
             p7->ptr = p6;
 
-            GC();
+            //GC();
         }
     }
-    GC();
+    //GC();
 }
 
 void testMoveCtor()
@@ -266,7 +266,7 @@ struct g
 		int i = 0;
 	}
 };
-gc_ptr<g> global(make_gc<g>());
+//gc_ptr<g> global(make_gc<g>());
 
 int main()
 {    
@@ -274,15 +274,12 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-        testInsert();
-        testEmpty();
-        test();
-        testMoveCtor();
+        //testInsert();
+        //testEmpty();
+        //test();
+        //testMoveCtor();
         testCirc();
     }
-#undef cout
-    GcCollect(1000);
-	cout << ((objcount == 0) ? "success!" : "fail!") << endl;
-    cout << "gc obj cnt" << gcobjcount << endl;
-    return 0;
+#undef cout    
+	return 0;
 }
