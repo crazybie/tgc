@@ -10,6 +10,7 @@ namespace gc
     {
         enum class MarkColor : char { White, Gray, Black };
 
+        // TODO: reduce this size by making the destroy & size & member pointers as class attributes.
         struct ObjInfo
         {
             char*                       obj;
@@ -137,9 +138,6 @@ namespace gc
         };
 
         GC* getGC() { static GC i; return &i; }
-
-        //////////////////////////////////////////////////////////////////////////
-
         ObjInfo* newObjInfo(void* o, int sz, Dctor dctor, char* mem) { return getGC()->newObjInfo(o, sz, dctor, mem); }
 
         PointerBase::PointerBase() : objInfo(0), owner(kInvalidObjInfo) { getGC()->pointers.insert(this); }
