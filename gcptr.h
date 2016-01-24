@@ -19,17 +19,16 @@
 */
 
 #pragma once
-
+#include <vector>
 
 namespace gc
 {
     namespace details
     {
-        typedef void(*Dctor)(void*);        
+        struct ClassInfo;
         struct ObjInfo;
-        ObjInfo* newObjInfo(void* obj, int size, Dctor dctor, char* mem);
-
         extern const int ObjInfoSize;
+        ObjInfo* newObjInfo(void* obj, ClassInfo* clsInfo, char* mem);        
 
         class PointerBase
         {
@@ -46,6 +45,24 @@ namespace gc
             ~PointerBase();
 #endif
             void onPointerUpdate();
+        };
+
+        
+        struct ClassInfo
+        {
+            void (*dctor)(void*);
+            int size;
+            std::vector<int> memPtrOffsets;
+
+            static PointerBase* getMemPointer(char* obj, int offset) { return (PointerBase*)(obj + offset); }
+        };
+
+        template<typename T>
+        class ObjClassInfo
+        {
+        public:
+            static void destroy(void* obj) { ((T*)obj)->~T(); }
+            static ClassInfo* get() { static ClassInfo i{ destroy, sizeof(T) }; return &i; }
         };
     };
     
@@ -83,7 +100,6 @@ namespace gc
 
         // Methods
 
-        static void destroy(void* obj) { ((T*)obj)->~T(); }
         void reset(T* o) { gc_ptr(o).swap(*this); }
         void reset(T* o, ObjInfo* n) { ptr = o; objInfo = n; onPointerUpdate(); }
         void swap(gc_ptr& r)
@@ -101,13 +117,13 @@ namespace gc
         T*  ptr;
     };
 
-
+    
     template<typename T, typename... Args>
     gc_ptr<T> make_gc(Args&&... args)
     {
         char* buf = new char[sizeof(T) + details::ObjInfoSize];
         T* obj = new (buf + details::ObjInfoSize) T(std::forward<Args>(args)...);
-        return gc_ptr<T>(obj, details::newObjInfo(obj, sizeof(T), &gc_ptr<T>::destroy, buf));
+        return gc_ptr<T>(obj, details::newObjInfo(obj, details::ObjClassInfo<T>::get(), buf));
     }
 
     template<typename T>

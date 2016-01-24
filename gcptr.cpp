@@ -2,7 +2,7 @@
 #include <set>
 #include <stdint.h>
 #include <unordered_set>
-#include <vector>
+
 
 namespace gc
 {
@@ -10,23 +10,20 @@ namespace gc
     {
         enum class MarkColor : char { White, Gray, Black };
 
-        // TODO: reduce this size by making the destroy & size & member pointers as class attributes.
         struct ObjInfo
         {
             char*                       obj;
-            Dctor                       destroy;  // call the proper destructor due to typeless char*.
-            size_t                      size;
-            std::vector<PointerBase*>   memberPointers;
+            ClassInfo*                  clsInfo;
             MarkColor                   color;
 
             struct Less
             {
-                bool operator()(ObjInfo* x, ObjInfo* y) { return x->obj + x->size <= y->obj; }
+                bool operator()(ObjInfo* x, ObjInfo* y) { return x->obj + x->clsInfo->size <= y->obj; }
             };
 
-            ObjInfo(void* o, int sz, Dctor dctor) : obj((char*)o), size(sz), destroy(dctor), color(MarkColor::White) {}
-            ~ObjInfo() { if (destroy) destroy(obj); }
-            bool containsPointer(void* ptr) { return obj <= ptr && ptr < obj + size; }
+            ObjInfo(void* o, ClassInfo* c) : obj((char*)o), clsInfo(c), color(MarkColor::White) {}
+            ~ObjInfo() { if (clsInfo->dctor) clsInfo->dctor(obj); }
+            bool containsPointer(void* ptr) { return obj <= ptr && ptr < obj + clsInfo->size; }
         };
 
         const int ObjInfoSize = sizeof(ObjInfo);
@@ -53,15 +50,16 @@ namespace gc
             }
             ObjInfo* findOwnerObjInfo(void* obj)
             {
-                ObjInfo temp(obj, 0, 0);
+                ClassInfo clsInfo{ 0, 0 };
+                ObjInfo temp(obj, &clsInfo);
                 auto i = objInfoSet.lower_bound(&temp);
                 if (i == objInfoSet.end() || !(*i)->containsPointer(obj))
                     return 0;
                 return *i;
             }
-            ObjInfo* newObjInfo(void* o, int sz, Dctor dctor, char* mem)
+            ObjInfo* newObjInfo(void* o, ClassInfo* clsInfo, char* mem)
             {
-                ObjInfo* objInfo = new (mem)ObjInfo(o, sz, dctor);
+                ObjInfo* objInfo = new (mem)ObjInfo(o, clsInfo);
                 objInfoSet.insert(objInfo);
                 return objInfo;
             }
@@ -83,12 +81,13 @@ namespace gc
             }
             bool isRoot(PointerBase* p)
             {
-                // 不能放到指针注册的地方：
-                // 因为owner的可能还没有调用newObjInfo注册到gc中
+                // 不能放到指针构造并注册的地方：
+                // 因为指针构造的时候owner还没有完成构造并注册到gc中。
                 if (p->owner == kInvalidObjInfo) {
-                    p->owner = findOwnerObjInfo(p);
-                    if (p->owner) {
-                        p->owner->memberPointers.push_back(p);
+                    auto owner = findOwnerObjInfo(p);
+                    p->owner = owner;
+                    if (owner) {
+                        owner->clsInfo->memPtrOffsets.push_back((char*)p - (char*)owner);
                     }
                 }
                 return !p->owner;
@@ -106,16 +105,17 @@ namespace gc
 
                 case State::Marking:
                     while (grayObjs.size() && stepCnt--) {
-                        ObjInfo* obj = grayObjs.back();
+                        ObjInfo* objInfo = grayObjs.back();
                         grayObjs.pop_back();
-                        obj->color = MarkColor::Black;
-                        for (auto j : obj->memberPointers) {
-                            if (j->objInfo->color == MarkColor::White) {
-                                grayObjs.push_back(j->objInfo);
+                        objInfo->color = MarkColor::Black;
+                        for (auto memPtrOffset : objInfo->clsInfo->memPtrOffsets) {
+                            PointerBase* mp = ClassInfo::getMemPointer(objInfo->obj, memPtrOffset);
+                            if (mp->objInfo->color == MarkColor::White) {
+                                grayObjs.push_back(mp->objInfo);
                             }
                         }
                     }
-                    if (grayObjs.size() == 0) state = State::Sweeping;
+                    if (!grayObjs.size()) state = State::Sweeping;
                     break;
 
                 case State::Sweeping:
@@ -138,7 +138,7 @@ namespace gc
         };
 
         GC* getGC() { static GC i; return &i; }
-        ObjInfo* newObjInfo(void* o, int sz, Dctor dctor, char* mem) { return getGC()->newObjInfo(o, sz, dctor, mem); }
+        ObjInfo* newObjInfo(void* o, ClassInfo* clsInfo, char* mem) { return getGC()->newObjInfo(o, clsInfo, mem); }
 
         PointerBase::PointerBase() : objInfo(0), owner(kInvalidObjInfo) { getGC()->pointers.insert(this); }
         PointerBase::PointerBase(void* obj) : owner(kInvalidObjInfo), objInfo(getGC()->findOwnerObjInfo(obj)) { getGC()->pointers.insert(this); }
