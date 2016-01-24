@@ -77,7 +77,7 @@ namespace gc
         template <typename U>
         gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo); }
         gc_ptr(const gc_ptr& r) { reset(r.ptr, r.objInfo);  }
-        gc_ptr(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; }
+        //gc_ptr(gc_ptr&& r) { reset(r.ptr, r.objInfo); r = nullptr; }
 
         // Operators
 

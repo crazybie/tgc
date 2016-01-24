@@ -1,7 +1,7 @@
 #include "gcptr.h"
 #include <set>
-#include <stdint.h>
 #include <unordered_set>
+#include <algorithm>
 
 
 namespace gc
@@ -28,6 +28,8 @@ namespace gc
 
         const int ObjInfoSize = sizeof(ObjInfo);
         ObjInfo* kInvalidObjInfo = (ObjInfo*)-1;
+        ClassInfo NullClsInfo{ 0, 0 };
+        ObjInfo NullObjInfo(0, &NullClsInfo);
 
         struct GC
         {
@@ -35,7 +37,7 @@ namespace gc
             std::set<ObjInfo*, ObjInfo::Less>   objInfoSet;
             std::vector<ObjInfo*>               grayObjs;
 
-            enum class State { Idle, Marking, Sweeping } state;
+            enum class State { Idle, MarkSweeping } state;
 
             GC()
             {
@@ -47,18 +49,17 @@ namespace gc
             ~GC() 
             { 
                 while (objInfoSet.size()) 
-                    gc::GcCollect(INT32_MAX); 
+                    gc::GcCollect((unsigned)-1); 
             }
             void onPointerUpdate(PointerBase* p) 
             { 
-                if (state == State::Marking) 
+                if (state == State::MarkSweeping) 
                     markAsRoot(p);
             }
             ObjInfo* findOwnerObjInfo(void* obj)
             {
-                ClassInfo clsInfo{ 0, 0 };
-                ObjInfo temp(obj, &clsInfo);
-                auto i = objInfoSet.lower_bound(&temp);
+                NullObjInfo.obj = (char*)obj;
+                auto i = objInfoSet.lower_bound(&NullObjInfo);
                 if (i == objInfoSet.end() || !(*i)->containsPointer(obj))
                     return 0;
                 return *i;
@@ -100,17 +101,18 @@ namespace gc
                 int sweptCnt = 0;
                 switch (state) {
                 case State::Idle:
-                    state = State::Marking;
+                    state = State::MarkSweeping;
                     for (auto i : pointers) {
                         markAsRoot(i);
                     }
                     break;
 
-                case State::Marking:
+                case State::MarkSweeping:
                     while (grayObjs.size() && stepCnt--) {
                         ObjInfo* objInfo = grayObjs.back();
                         grayObjs.pop_back();
                         objInfo->color = MarkColor::Black;
+                        if (!objInfo->clsInfo->memPtrOffsets.size()) continue;
                         for (auto memPtrOffset : objInfo->clsInfo->memPtrOffsets) {
                             auto* mp = PointerBase::fromOffset(objInfo->obj, memPtrOffset);
                             if (mp->objInfo->color == MarkColor::White) {
@@ -118,21 +120,20 @@ namespace gc
                             }
                         }
                     }
-                    if (!grayObjs.size()) state = State::Sweeping;
-                    break;
-
-                case State::Sweeping:
-                    state = State::Idle;
-                    for (auto i = objInfoSet.begin(); i != objInfoSet.end();) {
-                        ObjInfo* obj = *i;
-                        if (obj->color == MarkColor::White) {
-                            sweptCnt++;
-                            delete obj;
-                            i = objInfoSet.erase(i);
-                            continue;
+                    if (!grayObjs.size()) {
+                        state = State::Idle;
+                        for (auto i = objInfoSet.begin(); i != objInfoSet.end();) {
+                            ObjInfo* obj = *i;
+                            if (obj->color == MarkColor::White) {
+                                sweptCnt++;
+                                obj->~ObjInfo();
+                                delete[] (char*)obj;
+                                i = objInfoSet.erase(i);
+                                continue;
+                            }
+                            obj->color = MarkColor::White;
+                            ++i;
                         }
-                        obj->color = MarkColor::White;
-                        ++i;
                     }
                     break;
                 }
