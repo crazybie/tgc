@@ -43,10 +43,16 @@ namespace gc
                 grayObjs.reserve(1024);
                 pointers.reserve(1024);
             }
-            ~GC()
-            {
-                while (objInfoSet.size())
-                    gc::GcCollect(INT32_MAX);
+            
+            ~GC() 
+            { 
+                while (objInfoSet.size()) 
+                    gc::GcCollect(INT32_MAX); 
+            }
+            void onPointerUpdate(PointerBase* p) 
+            { 
+                if (state == State::Marking) 
+                    markAsRoot(p);
             }
             ObjInfo* findOwnerObjInfo(void* obj)
             {
@@ -62,12 +68,6 @@ namespace gc
                 ObjInfo* objInfo = new (mem)ObjInfo(o, clsInfo);
                 objInfoSet.insert(objInfo);
                 return objInfo;
-            }
-            void onPointerUpdate(PointerBase* p)
-            {
-                if (state == State::Marking) {
-                    markAsRoot(p);
-                }
             }
             void markAsRoot(PointerBase* p)
             {
@@ -112,7 +112,7 @@ namespace gc
                         grayObjs.pop_back();
                         objInfo->color = MarkColor::Black;
                         for (auto memPtrOffset : objInfo->clsInfo->memPtrOffsets) {
-                            PointerBase* mp = ClassInfo::getMemPointer(objInfo->obj, memPtrOffset);
+                            auto* mp = PointerBase::fromOffset(objInfo->obj, memPtrOffset);
                             if (mp->objInfo->color == MarkColor::White) {
                                 grayObjs.push_back(mp->objInfo);
                             }
@@ -147,6 +147,8 @@ namespace gc
         PointerBase::PointerBase(void* obj) : owner(kInvalidObjInfo), objInfo(getGC()->findOwnerObjInfo(obj)) { getGC()->pointers.insert(this); }
         PointerBase::~PointerBase() { getGC()->pointers.erase(this); }
         void PointerBase::onPointerUpdate() { getGC()->onPointerUpdate(this); }
+        PointerBase* PointerBase::fromOffset(char* obj, int offset) { return (PointerBase*)(obj + offset); }
+
     }
 
     int GcCollect(int step) { return details::getGC()->collect(step); }

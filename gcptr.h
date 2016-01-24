@@ -38,6 +38,7 @@ namespace gc
             PointerBase();
             PointerBase(void* obj);
             void onPointerUpdate();
+            static PointerBase* fromOffset(char* obj, int offset);
 
 #ifdef _DEBUG
             virtual ~PointerBase();
@@ -51,8 +52,6 @@ namespace gc
             void                (*dctor)(void*);
             int                 size;
             std::vector<int>    memPtrOffsets;
-
-            static PointerBase* getMemPointer(char* obj, int offset) { return (PointerBase*)(obj + offset); }
         };
 
         template<typename T>

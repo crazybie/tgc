@@ -276,10 +276,10 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-        //testInsert();
-        //testEmpty();
-        //test();
-        //testMoveCtor();
+        testInsert();
+        testEmpty();
+        test();
+        testMoveCtor();
         testCirc();
     }
 #undef cout    
