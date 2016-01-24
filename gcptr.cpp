@@ -87,7 +87,10 @@ namespace gc
                     auto owner = findOwnerObjInfo(p);
                     p->owner = owner;
                     if (owner) {
-                        owner->clsInfo->memPtrOffsets.push_back((char*)p - (char*)owner);
+                        auto offset = (char*)p - (char*)owner->obj;
+                        auto& offsets = owner->clsInfo->memPtrOffsets;                        
+                        if (std::find(offsets.begin(), offsets.end(), offset) == offsets.end())
+                            offsets.push_back(offset);
                     }
                 }
                 return !p->owner;
