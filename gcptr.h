@@ -35,24 +35,22 @@ namespace gc
         public:
             ObjInfo* owner;
             ObjInfo* objInfo;
-
             PointerBase();
             PointerBase(void* obj);
+            void onPointerUpdate();
 
 #ifdef _DEBUG
             virtual ~PointerBase();
 #else
             ~PointerBase();
-#endif
-            void onPointerUpdate();
+#endif      
         };
-
-        
+                
         struct ClassInfo
         {
-            void (*dctor)(void*);
-            int size;
-            std::vector<int> memPtrOffsets;
+            void                (*dctor)(void*);
+            int                 size;
+            std::vector<int>    memPtrOffsets;
 
             static PointerBase* getMemPointer(char* obj, int offset) { return (PointerBase*)(obj + offset); }
         };
@@ -66,14 +64,11 @@ namespace gc
         };
     };
     
-    int GcCollect(int step);
-    
-    using details::ObjInfo;
-
 
     template <typename T>
     class gc_ptr : protected details::PointerBase
     {
+        typedef details::ObjInfo ObjInfo;
     public:
         // Constructors
 
@@ -128,5 +123,7 @@ namespace gc
 
     template<typename T>
     gc_ptr<T> gc_from_this(T* t) { return gc_ptr<T>(t); }
+
+    int GcCollect(int step);
 }
 

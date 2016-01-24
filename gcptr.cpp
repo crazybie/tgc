@@ -63,19 +63,19 @@ namespace gc
                 objInfoSet.insert(objInfo);
                 return objInfo;
             }
-            void onPointerUpdate(PointerBase* ptr)
+            void onPointerUpdate(PointerBase* p)
             {
                 if (state == State::Marking) {
-                    markAsRoot(ptr);
+                    markAsRoot(p);
                 }
             }
-            void markAsRoot(PointerBase* i)
+            void markAsRoot(PointerBase* p)
             {
-                if (!i->objInfo) return;
-                if (isRoot(i)) {
-                    if (i->objInfo->color == MarkColor::White) {
-                        i->objInfo->color = MarkColor::Gray;
-                        grayObjs.push_back(i->objInfo);
+                if (!p->objInfo) return;
+                if (isRoot(p)) {
+                    if (p->objInfo->color == MarkColor::White) {
+                        p->objInfo->color = MarkColor::Gray;
+                        grayObjs.push_back(p->objInfo);
                     }
                 }
             }
