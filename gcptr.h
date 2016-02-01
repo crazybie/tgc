@@ -16,7 +16,7 @@
     - add compability for old compiler
 
     by crazybie at soniced@sina.com, shawn.li.song@gmail.com.
-*/
+    */
 
 #pragma once
 #include <vector>
@@ -25,82 +25,92 @@ namespace gc
 {
     namespace details
     {
-        struct ClassInfo;
-        struct ObjInfo;
-        extern const int ObjInfoSize;
-        ObjInfo* newObjInfo(void* obj, ClassInfo* clsInfo, char* mem);        
+        struct MetaInfo;
 
         class PointerBase
         {
         public:
-            ObjInfo* owner;
-            ObjInfo* objInfo;
+            unsigned int    isRoot : 1;
+            unsigned int    index : 31;
+            MetaInfo*       metaInfo;
+
             PointerBase();
             PointerBase(void* obj);
-            void onPointerUpdate();
-            static PointerBase* fromOffset(char* obj, int offset);
-
-#ifdef _DEBUG
-            virtual ~PointerBase();
-#else
             ~PointerBase();
-#endif      
+            void onPointerChanged();
         };
-                
+
         struct ClassInfo
         {
-            void                (*dctor)(void*);
+            enum class MemPtrState{ Unregistered, Registering, Registered };
+            typedef void (*Dctor)(void*);
+
+            Dctor               dctor;
             int                 size;
             std::vector<int>    memPtrOffsets;
+            MemPtrState         memPtrState;
+            static ClassInfo*   currentConstructing;
+            static ClassInfo    Empty;
+
+            ClassInfo(Dctor d, int sz);
+            void* beginNewObj(int objSz, MetaInfo*& info);
+            void endNewObj();
         };
 
         template<typename T>
         class ObjClassInfo
         {
         public:
-            static void destroy(void* obj) { ((T*)obj)->~T(); }
-            static ClassInfo* get() { static ClassInfo i{ destroy, sizeof(T) }; return &i; }
+            static void destroy(void* obj)
+            {
+                ((T*)obj)->~T();
+            }
+            static ClassInfo* get()
+            {
+                static ClassInfo i{ destroy, sizeof(T) };
+                return &i;
+            }
         };
     };
-    
+
 
     template <typename T>
     class gc_ptr : protected details::PointerBase
     {
-        typedef details::ObjInfo ObjInfo;
+        typedef details::MetaInfo MetaInfo;
     public:
         // Constructors
 
-        gc_ptr() : ptr(0) { }
-        gc_ptr(T* obj, ObjInfo* info_) { reset(obj, info_);}
-        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) { }
+        gc_ptr() : ptr(0) {}
+        gc_ptr(T* obj, MetaInfo* info_) { reset(obj, info_); }
+        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) {}
         template <typename U>
-        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo); }
-        gc_ptr(const gc_ptr& r) { reset(r.ptr, r.objInfo);  }
-        //gc_ptr(gc_ptr&& r) { reset(r.ptr, r.objInfo); r = nullptr; }
+        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.metaInfo); }
+        gc_ptr(const gc_ptr& r) { reset(r.ptr, r.metaInfo); }
+        gc_ptr(gc_ptr&& r) { reset(r.ptr, r.metaInfo); r = nullptr; }
 
         // Operators
 
         template <typename U>
-        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.objInfo);  return *this; }
-        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.objInfo);  return *this; }
-        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.objInfo); r.objInfo = 0; return *this; }
-        T* operator->() const { return ptr; }        
+        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.metaInfo);  return *this; }
+        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.metaInfo);  return *this; }
+        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.metaInfo); r.metaInfo = 0; r.ptr = 0; return *this; }
+        T* operator->() const { return ptr; }
         explicit operator bool() const { return ptr != 0; }
-        bool operator==(const gc_ptr& r)const { return objInfo == r.objInfo; }
-        bool operator!=(const gc_ptr& r)const { return objInfo != r.objInfo; }
+        bool operator==(const gc_ptr& r)const { return metaInfo == r.metaInfo; }
+        bool operator!=(const gc_ptr& r)const { return metaInfo != r.metaInfo; }
         void operator=(T*) = delete;
-        gc_ptr& operator=(decltype(nullptr)) { return *this = gc_ptr(); }
+        gc_ptr& operator=(decltype(nullptr)) { metaInfo = 0; ptr = 0; return *this; }
 
         // Methods
 
         void reset(T* o) { gc_ptr(o).swap(*this); }
-        void reset(T* o, ObjInfo* n) { ptr = o; objInfo = n; onPointerUpdate(); }
+        void reset(T* o, MetaInfo* n) { ptr = o; metaInfo = n; onPointerChanged(); }
         void swap(gc_ptr& r)
         {
             T* temp = ptr;
-            ObjInfo* tinfo = objInfo;
-            reset(r.ptr, r.objInfo);
+            MetaInfo* tinfo = metaInfo;
+            reset(r.ptr, r.metaInfo);
             r.reset(temp, tinfo);
         }
 
@@ -115,14 +125,19 @@ namespace gc
     template<typename T, typename... Args>
     gc_ptr<T> make_gc(Args&&... args)
     {
-        char* buf = new char[sizeof(T) + details::ObjInfoSize];
-        T* obj = new (buf + details::ObjInfoSize) T(std::forward<Args>(args)...);
-        return gc_ptr<T>(obj, details::newObjInfo(obj, details::ObjClassInfo<T>::get(), buf));
+        using namespace details;
+        
+        MetaInfo* meta;
+        ClassInfo* cls = ObjClassInfo<T>::get();
+        auto* buf = cls->beginNewObj(sizeof(T), meta);
+        T* obj = new (buf)T(std::forward<Args>(args)...);
+        cls->endNewObj();
+        return gc_ptr<T>(obj, meta);
     }
 
     template<typename T>
     gc_ptr<T> gc_from_this(T* t) { return gc_ptr<T>(t); }
 
-    int GcCollect(int step);
+    void GcCollect(int step);
 }
 

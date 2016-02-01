@@ -16,7 +16,7 @@ using namespace gc;
 #endif
 
 #ifdef PROFILE
-#define PROFILE_LOOP for(int i=0;i<200*(rand()%5+5);i++)
+#define PROFILE_LOOP for(int i=0;i<500*(rand()%5+5);i++)
 #define cout comment(/)
 #define comment(a) /a
 #else
@@ -31,13 +31,9 @@ static int gcobjcount = 0;
 
 void _GC(int line)
 {
-    auto freeCnt = GcCollect(2);
-    freeCnt += GcCollect(2);
-    freeCnt += GcCollect(2);
-    gcobjcount += freeCnt;
+    GcCollect(2);    
 #ifndef PROFILE
-    printf("---- GC at line %d ----\n", line);
-    printf("GC: swept %d objects\n", freeCnt);
+    printf("---- GC at line %d ----\n", line);    
     printf("Obj left:%d \n", objcount);
 #endif
 }
@@ -283,7 +279,7 @@ int main()
         testCirc();
     }
 #undef cout    
-    for (int i = 0; i < 3; i++)GcCollect(1000);
+    GcCollect(-1);
     cout << (!objcount ? "ok" : "failed") << endl;
     return objcount;
 }
