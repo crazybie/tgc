@@ -1,7 +1,9 @@
+#include "pch.h"
 #include "gcptr.h"
 #include <set>
 #include <deque>
 #include <algorithm>
+#include <assert.h>
 
 
 namespace gc
@@ -36,8 +38,15 @@ namespace gc
         {
             typedef std::set<MetaInfo*, MetaInfo::Less> ObjSet;
 
+#if 0 
+            // deque for small memory overhead
             std::deque<PointerBase*>            pointers;
             std::deque<MetaInfo*>               grayObjs;
+#else
+            // vector for fast speed
+            std::vector<PointerBase*>           pointers;
+            std::vector<MetaInfo*>              grayObjs;
+#endif
             std::set<MetaInfo*, MetaInfo::Less> metaInfoSet;
             size_t                              nextRootMarking;
             ObjSet::iterator                    nextSweeping;
@@ -112,9 +121,8 @@ namespace gc
 
                 auto offset = (char*)p - (char*)owner->getObj();
                 auto& offsets = clsInfo->memPtrOffsets;
-                if (std::find(offsets.begin(), offsets.end(), offset) == offsets.end()) {
-                    offsets.push_back(offset);
-                }
+                assert(std::find(offsets.begin(), offsets.end(), offset) == offsets.end());
+                offsets.push_back(offset);
             }
             void registerPointer(PointerBase* p)
             {
@@ -199,9 +207,8 @@ namespace gc
                 }
             }
         };
-
-        static GC i;
-        GC* getGC() {  return &i; }
+        
+        GC* getGC() { static GC i; return &i; }
 
         PointerBase::PointerBase() : metaInfo(0), isRoot(1) { getGC()->registerPointer(this); }
         PointerBase::PointerBase(void* obj) : isRoot(1) { auto* gc = getGC(); gc->registerPointer(this); metaInfo = gc->findOwnerMeta(obj); }
