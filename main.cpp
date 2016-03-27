@@ -31,7 +31,7 @@ static int gcobjcount = 0;
 
 void _GC(int line)
 {
-    GcCollect(2);    
+    gc_collect(2);    
 #ifndef PROFILE
     printf("---- GC at line %d ----\n", line);    
     printf("Obj left:%d \n", objcount);
@@ -112,7 +112,7 @@ struct rc
 	}
 	~rc()
 	{
-        auto i = gc_from_this(this);
+        auto i = gc_from(this);
         objcount--;
 	}
 };
@@ -279,7 +279,7 @@ int main()
         testCirc();
     }
 #undef cout    
-    GcCollect(-1);
+    gc_collect(-1);
     cout << (!objcount ? "ok" : "failed") << endl;
     return objcount;
 }

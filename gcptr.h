@@ -1,21 +1,13 @@
 /*
-    A ref counted + mark & sweep garbage collector.
-
-    Mostly objects will be recycled by the ref-counter,
-    the circular referenced objects will be handled by the mark & sweep gc.
-
+    A super fast incremental mark & sweep garbage collector.
+	  
     Based on http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
-    Improvements:
-    - add ref count
-    - c++11 support
-    - reduce unnecessary obj info searching.
-    - replace std::map with hash table.
-    - replace the operator new & delete with free factory function.
-    TODO:
-    - make it exception safe.
-    - add compability for old compiler
-
-    by crazybie at soniced@sina.com, shawn.li.song@gmail.com.
+    
+	TODO:
+    - exception safe.
+    - thread safe.
+    
+    by crazybie at soniced@sina.com
     */
 
 #pragma once
@@ -23,51 +15,54 @@
 
 namespace gc
 {
+    struct MetaInfo;
+
     namespace details
     {
-        struct MetaInfo;
-
-        class PointerBase
+        class PtrBase
         {
         public:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
             MetaInfo*       metaInfo;
 
-            PointerBase();
-            PointerBase(void* obj);
-            ~PointerBase();
-            void onPointerChanged();
+            PtrBase();
+            PtrBase(void* obj);
+            ~PtrBase();
+            void onPtrChanged();
         };
 
         struct ClassInfo
         {
-            enum class MemPtrState{ Unregistered, Registering, Registered };
-            typedef void (*Dctor)(void*);
+            enum class MemPtrState { Unregistered, Registered };
+            typedef void (*Dctor)(ClassInfo* cls, void* obj);
+            typedef char* (*Alloc)(ClassInfo* cls, int sz);
 
+            Alloc               alloc;
             Dctor               dctor;
             int                 size;
+            int                 objCnt;
             std::vector<int>    memPtrOffsets;
             MemPtrState         memPtrState;
-            static ClassInfo*   currentConstructing;
+
+            static bool			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo(Dctor d, int sz);
+			ClassInfo(Alloc a, Dctor d, int sz);
             void* beginNewObj(int objSz, MetaInfo*& info);
             void endNewObj();
-        };
 
-        template<typename T>
-        class ObjClassInfo
-        {
-        public:
-            static void destroy(void* obj)
-            {
-                ((T*)obj)->~T();
-            }
+            bool containsPtr(char* obj, char* ptr) { return obj <= ptr && ptr < obj + size; }
+            int getSubPtrCnt() { return memPtrOffsets.size(); }
+            PtrBase* getSubPtr(char* base, int i) { return (PtrBase*)(base + memPtrOffsets[i]); }            
+            void registerSubPtr(MetaInfo* owner, PtrBase* ptr);
+
+            template<typename T>
             static ClassInfo* get()
             {
-                static ClassInfo i{ destroy, sizeof(T) };
+                auto alloc = [](ClassInfo* cls, int sz) { cls->objCnt++;  return new char[sz]; };
+                auto destroy = [](ClassInfo* cls, void* obj) { cls->objCnt--; ((T*)obj)->~T(); delete[] (char*)obj; };
+                static ClassInfo i{ alloc, destroy, sizeof(T) };
                 return &i;
             }
         };
@@ -75,15 +70,14 @@ namespace gc
 
 
     template <typename T>
-    class gc_ptr : protected details::PointerBase
-    {
-        typedef details::MetaInfo MetaInfo;
+    class gc_ptr : protected details::PtrBase
+    {        
     public:
         // Constructors
 
         gc_ptr() : ptr(0) {}
-        gc_ptr(T* obj, MetaInfo* info_) { reset(obj, info_); }
-        explicit gc_ptr(T* obj) : PointerBase(obj), ptr(obj) {}
+        gc_ptr(T* obj, MetaInfo* info) { reset(obj, info); }
+        explicit gc_ptr(T* obj) : PtrBase(obj), ptr(obj) {}
         template <typename U>
         gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.metaInfo); }
         gc_ptr(const gc_ptr& r) { reset(r.ptr, r.metaInfo); }
@@ -96,6 +90,7 @@ namespace gc
         gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.metaInfo);  return *this; }
         gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.metaInfo); r.metaInfo = 0; r.ptr = 0; return *this; }
         T* operator->() const { return ptr; }
+        T& operator*() const { return *ptr; }
         explicit operator bool() const { return ptr != 0; }
         bool operator==(const gc_ptr& r)const { return metaInfo == r.metaInfo; }
         bool operator!=(const gc_ptr& r)const { return metaInfo != r.metaInfo; }
@@ -105,7 +100,7 @@ namespace gc
         // Methods
 
         void reset(T* o) { gc_ptr(o).swap(*this); }
-        void reset(T* o, MetaInfo* n) { ptr = o; metaInfo = n; onPointerChanged(); }
+        void reset(T* o, MetaInfo* n) { ptr = o; metaInfo = n; onPtrChanged(); }
         void swap(gc_ptr& r)
         {
             T* temp = ptr;
@@ -115,7 +110,7 @@ namespace gc
         }
 
     private:
-        template <typename U>
+        template<typename U>
         friend class gc_ptr;
 
         T*  ptr;
@@ -125,10 +120,9 @@ namespace gc
     template<typename T, typename... Args>
     gc_ptr<T> make_gc(Args&&... args)
     {
-        using namespace details;
-        
+        using namespace details;        
         MetaInfo* meta;
-        ClassInfo* cls = ObjClassInfo<T>::get();
+        ClassInfo* cls = ClassInfo::get<T>();
         auto* buf = cls->beginNewObj(sizeof(T), meta);
         T* obj = new (buf)T(std::forward<Args>(args)...);
         cls->endNewObj();
@@ -136,8 +130,26 @@ namespace gc
     }
 
     template<typename T>
-    gc_ptr<T> gc_from_this(T* t) { return gc_ptr<T>(t); }
+    gc_ptr<T> gc_from(T* t) { return gc_ptr<T>(t); }
 
-    void GcCollect(int step);
+    void gc_collect(int step);
+
+
+    template<typename T>
+    struct gc_array
+    {
+        T* buf;
+        int length;
+        //static
+    };
+
+    template<typename T>
+    gc_array<T> make_array()
+    {
+        using namespace details;
+        return gc_array<T>();
+    }
+
+        
 }
 
