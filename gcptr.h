@@ -1,12 +1,12 @@
 /*
     A super fast incremental mark & sweep garbage collector.
-	  
+
     Based on http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
-    
-	TODO:
+
+    TODO:
     - exception safe.
     - thread safe.
-    
+
     by crazybie at soniced@sina.com
     */
 
@@ -34,35 +34,41 @@ namespace gc
 
         struct ClassInfo
         {
-            enum class MemPtrState { Unregistered, Registered };
-            typedef void (*Dctor)(ClassInfo* cls, void* obj);
-            typedef char* (*Alloc)(ClassInfo* cls, int sz);
+            enum class State : char { Unregistered, Registered };
+
+            typedef void(*Dctor)( ClassInfo* cls, void* obj );
+            typedef char* ( *Alloc )( ClassInfo* cls );
+            typedef size_t (*GetSubPtrCnt)( ClassInfo* cls, char* obj );
+            typedef PtrBase* ( *GetSubPtr )( ClassInfo* cls, char* obj, int i );
 
             Alloc               alloc;
             Dctor               dctor;
-            int                 size;
-            int                 objCnt;
+            GetSubPtrCnt        getSubPtrCnt;
+            GetSubPtr           getSubPtr;
+            size_t              size;
+            size_t              objCnt;
             std::vector<int>    memPtrOffsets;
-            MemPtrState         memPtrState;
+            State               state;
 
             static bool			isCreatingObj;
             static ClassInfo    Empty;
 
-			ClassInfo(Alloc a, Dctor d, int sz);
-            void* beginNewObj(int objSz, MetaInfo*& info);
-            void endNewObj();
-
+            ClassInfo::ClassInfo(Alloc a, Dctor d, GetSubPtrCnt getSubPtrCnt_, GetSubPtr getSubPtr_, int sz)
+                : alloc(a), dctor(d), getSubPtrCnt(getSubPtrCnt_), getSubPtr(getSubPtr_), size(sz), state(State::Unregistered)
+            {}
+            char* createObj(MetaInfo*& meta);
             bool containsPtr(char* obj, char* ptr) { return obj <= ptr && ptr < obj + size; }
-            int getSubPtrCnt() { return memPtrOffsets.size(); }
-            PtrBase* getSubPtr(char* base, int i) { return (PtrBase*)(base + memPtrOffsets[i]); }            
             void registerSubPtr(MetaInfo* owner, PtrBase* ptr);
 
             template<typename T>
             static ClassInfo* get()
             {
-                auto alloc = [](ClassInfo* cls, int sz) { cls->objCnt++;  return new char[sz]; };
-                auto destroy = [](ClassInfo* cls, void* obj) { cls->objCnt--; ((T*)obj)->~T(); delete[] (char*)obj; };
-                static ClassInfo i{ alloc, destroy, sizeof(T) };
+                auto alloc = [](ClassInfo* cls) { cls->objCnt++;  return new char[sizeof(T)]; };
+                auto destroy = [](ClassInfo* cls, void* obj) { cls->objCnt--; ( (T*)obj )->~T(); delete[](char*)obj; };
+                auto getSubPtrCnt = [](ClassInfo* cls, char* obj) { return cls->memPtrOffsets.size(); };
+                auto getSubPtr = [](ClassInfo* cls, char* obj, int i) { return (PtrBase*)( obj + cls->memPtrOffsets[i] ); };
+
+                static ClassInfo i{ alloc, destroy, getSubPtrCnt, getSubPtr, sizeof(T) };
                 return &i;
             }
         };
@@ -70,8 +76,8 @@ namespace gc
 
 
     template <typename T>
-    class gc_ptr : protected details::PtrBase
-    {        
+    class gc_ptr : public details::PtrBase
+    {
     public:
         // Constructors
 
@@ -95,7 +101,7 @@ namespace gc
         bool operator==(const gc_ptr& r)const { return metaInfo == r.metaInfo; }
         bool operator!=(const gc_ptr& r)const { return metaInfo != r.metaInfo; }
         void operator=(T*) = delete;
-        gc_ptr& operator=(decltype(nullptr)) { metaInfo = 0; ptr = 0; return *this; }
+        gc_ptr& operator=(decltype( nullptr )) { metaInfo = 0; ptr = 0; return *this; }
 
         // Methods
 
@@ -116,40 +122,59 @@ namespace gc
         T*  ptr;
     };
 
-    
-    template<typename T, typename... Args>
-    gc_ptr<T> make_gc(Args&&... args)
-    {
-        using namespace details;        
-        MetaInfo* meta;
-        ClassInfo* cls = ClassInfo::get<T>();
-        auto* buf = cls->beginNewObj(sizeof(T), meta);
-        T* obj = new (buf)T(std::forward<Args>(args)...);
-        cls->endNewObj();
-        return gc_ptr<T>(obj, meta);
-    }
-
     template<typename T>
     gc_ptr<T> gc_from(T* t) { return gc_ptr<T>(t); }
 
     void gc_collect(int step);
 
 
-    template<typename T>
-    struct gc_array
+    template<typename T, typename... Args>
+    gc_ptr<T> make_gc(Args&&... args)
     {
-        T* buf;
-        int length;
-        //static
+        using namespace details;
+
+        ClassInfo* cls = ClassInfo::get<T>();
+        cls->isCreatingObj = true;
+        MetaInfo* meta;
+        char* buf = cls->createObj(meta);
+        T* obj = new ( buf )T(std::forward<Args>(args)...);
+        cls->state = ClassInfo::State::Registered;
+        cls->isCreatingObj = false;
+        return gc_ptr<T>(obj, meta);
+    }
+
+    template<typename T>
+    struct gc_vector : private std::vector<gc_ptr<T>>
+    {
+        typedef gc_ptr<T> ptr;
+        typedef vector<gc_ptr<T>> super;
+
+        void push_back(const ptr& t) { super::push_back(t); back().isRoot = 0; }
+        using super::size;
+
+    private:
+        gc_vector() {}
+
+        template<typename T>
+        friend gc_ptr<gc_vector<T>> make_gc_vector();
     };
 
     template<typename T>
-    gc_array<T> make_array()
+    gc_ptr<gc_vector<T>> make_gc_vector()
     {
         using namespace details;
-        return gc_array<T>();
-    }
+        typedef gc_vector<T> Array;
 
-        
+        ClassInfo* cls = ClassInfo::get<Array>();
+        if ( cls->state == ClassInfo::State::Unregistered ) {
+            cls->state = ClassInfo::State::Registered;
+            cls->getSubPtrCnt = [](ClassInfo* cls, char* obj) { return ( (Array*)obj )->size(); };
+            cls->getSubPtr = [](ClassInfo* cls, char* obj, int i)->PtrBase* { return &( *(Array*)obj )[i]; };
+        }
+        MetaInfo* meta;
+        auto obj = cls->createObj(meta);
+        auto array = new ( obj ) Array();
+        return gc_ptr<Array>(array, meta);
+    }
 }
 

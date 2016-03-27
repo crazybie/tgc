@@ -266,20 +266,43 @@ struct g
 };
 //gc_ptr<g> global(make_gc<g>());
 
+
+struct ArrayTest
+{
+    gc_ptr<gc_vector<rc>> a;
+
+    //gc_vector<rc> b;
+    void f()
+    {
+        a = make_gc_vector<rc>();
+        a->push_back(make_gc<rc>());
+    }
+};
+
+gc_ptr<ArrayTest> a;
+
+void testArray()
+{    
+    a = make_gc<ArrayTest>();
+    a->f();
+}
+
+
 int main()
 {    
 #ifdef PROFILE
     for (int i = 0; i < 10; i++) 
 #endif
     {
-        testInsert();
-        testEmpty();
-        test();
-        testMoveCtor();
-        testCirc();
+         testInsert();
+         testEmpty();
+         test();
+         testMoveCtor();
+         testCirc();
+        testArray();
     }
 #undef cout    
-    gc_collect(-1);
+    gc_collect(10);
     cout << (!objcount ? "ok" : "failed") << endl;
     return objcount;
 }

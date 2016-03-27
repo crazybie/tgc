@@ -8,13 +8,13 @@ namespace gc
 {
     using namespace details;
 
-    enum class MarkColor : char { White, Gray, Black };
-
     struct MetaInfo
     {
-        ClassInfo*      clsInfo;
-        char*           objPtr;
-        MarkColor       color;
+        enum MarkColor : char { White, Gray, Black };
+
+        ClassInfo*  clsInfo;
+        char*       objPtr;
+        MarkColor   color;
 
         struct Less
         {
@@ -22,24 +22,25 @@ namespace gc
         };
 
         explicit MetaInfo(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
-        ~MetaInfo() { if ( clsInfo->dctor ) clsInfo->dctor(clsInfo, objPtr); }
+        ~MetaInfo() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
         bool operator<(MetaInfo& r) { return objPtr + clsInfo->size <= r.objPtr; }
     };
-    
+
+
     struct GC
     {
-        typedef std::set<MetaInfo*, MetaInfo::Less> ObjSet;
+        typedef std::set<MetaInfo*, MetaInfo::Less> MetaSet;
         enum class State { RootMarking, ChildMarking, Sweeping };
 
         std::vector<PtrBase*>   pointers;
         std::vector<MetaInfo*>  grayObjs;
-        ObjSet				    metaInfoSet;
+        MetaSet				    metaSet;
         size_t				    nextRootMarking;
-        ObjSet::iterator	    nextSweeping;
+        MetaSet::iterator	    nextSweeping;
         State				    state;
 
         GC() : state(State::RootMarking), nextRootMarking(0) {}
-        ~GC() { gc::gc_collect((unsigned)-1); }
+        ~GC() { collect((unsigned)-1); }
         static GC* get() { static GC i; return &i; }
 
         void onPtrChanged(PtrBase* p)
@@ -50,12 +51,12 @@ namespace gc
             case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
             case State::ChildMarking:	markAsRoot(p); break;
             case State::Sweeping:
-                if ( p->metaInfo->color == MarkColor::White ) {
+                if ( p->metaInfo->color == MetaInfo::White ) {
                     if ( *p->metaInfo < **nextSweeping ) {
                         // already white and ready for the next rootMarking.
                     } else {
                         // mark it alive to bypass sweeping.
-                        p->metaInfo->color = MarkColor::Black;
+                        p->metaInfo->color = MetaInfo::Black;
                     }
                 }
                 break;
@@ -64,8 +65,8 @@ namespace gc
         void markAsRoot(PtrBase* p)
         {
             if ( p->isRoot == 1 ) {
-                if ( p->metaInfo->color == MarkColor::White ) {
-                    p->metaInfo->color = MarkColor::Gray;
+                if ( p->metaInfo->color == MetaInfo::White ) {
+                    p->metaInfo->color = MetaInfo::Gray;
                     grayObjs.push_back(p->metaInfo);
                 }
             }
@@ -112,52 +113,59 @@ namespace gc
                 while ( grayObjs.size() && stepCnt-- ) {
                     MetaInfo* info = grayObjs.back();
                     grayObjs.pop_back();
-                    info->color = MarkColor::Black;
-                    for ( int i = 0; i < info->clsInfo->getSubPtrCnt(); i++ ) {
-                        auto* subPtr = info->clsInfo->getSubPtr(info->objPtr, i);
-                        if ( subPtr->metaInfo->color == MarkColor::White ) {
+                    info->color = MetaInfo::Black;
+                    // IMPORTANT
+                    auto cls = info->clsInfo;
+                    for ( size_t i = 0; i < cls->getSubPtrCnt(cls, info->objPtr); i++ ) {
+                        auto* subPtr = cls->getSubPtr(cls, info->objPtr, i);
+                        if ( subPtr->metaInfo->color == MetaInfo::White ) {
                             grayObjs.push_back(subPtr->metaInfo);
                         }
                     }
                 }
                 if ( !grayObjs.size() ) {
                     state = State::Sweeping;
-                    nextSweeping = metaInfoSet.begin();
+                    nextSweeping = metaSet.begin();
                     goto _Sweeping;
                 }
                 break;
 
             _Sweeping:
             case State::Sweeping:
-                for ( ; nextSweeping != metaInfoSet.end() && stepCnt--;) {
+                for ( ; nextSweeping != metaSet.end() && stepCnt--;) {
                     MetaInfo* meta = *nextSweeping;
-                    if ( meta->color == MarkColor::White ) {
+                    if ( meta->color == MetaInfo::White ) {
                         delete meta;
-                        nextSweeping = metaInfoSet.erase(nextSweeping);
+                        nextSweeping = metaSet.erase(nextSweeping);
                         continue;
                     }
-                    meta->color = MarkColor::White;
+                    meta->color = MetaInfo::White;
                     ++nextSweeping;
                 }
-                if ( nextSweeping == metaInfoSet.end() ) {
+                if ( nextSweeping == metaSet.end() ) {
                     state = State::RootMarking;
-                    if ( metaInfoSet.size() )
+                    if ( metaSet.size() )
                         goto _RootMarking;
                 }
                 break;
             }
         }
-    };
+    };    
+        
+    void gc_collect(int step) { return GC::get()->collect(step); }
 
     //////////////////////////////////////////////////////////////////////////
 
+    bool ClassInfo::isCreatingObj = false;
+    ClassInfo ClassInfo::Empty{ 0, 0, 0,0,0 };
     MetaInfo DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
     MetaInfo* findOwnerMeta(void* obj)
     {
-        auto& objs = GC::get()->metaInfoSet;
+        auto& objs = GC::get()->metaSet;
         DummyMetaInfo.objPtr = (char*)obj;
         auto i = objs.lower_bound(&DummyMetaInfo);
+        DummyMetaInfo.objPtr = 0;
         if ( i == objs.end() || !( *i )->clsInfo->containsPtr(( *i )->objPtr, (char*)obj) ) {
             return 0;
         }
@@ -171,7 +179,7 @@ namespace gc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->isRoot = 0;
+            p->isRoot = 0; // IMPORTANT
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }
@@ -181,27 +189,23 @@ namespace gc
     PtrBase::~PtrBase() { GC::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { GC::get()->onPtrChanged(this); }
 
-
-    bool ClassInfo::isCreatingObj = false;
-    ClassInfo ClassInfo::Empty{ 0, 0, 0 };
-    ClassInfo::ClassInfo(ClassInfo::Alloc a, ClassInfo::Dctor d, int sz) : alloc(a), dctor(d), size(sz), memPtrState(MemPtrState::Unregistered) {}
-    void ClassInfo::endNewObj() { memPtrState = MemPtrState::Registered; isCreatingObj = false; }
-
+    
     void ClassInfo::registerSubPtr(MetaInfo* owner, PtrBase* p)
     {
-        if ( memPtrState == ClassInfo::MemPtrState::Registered ) return;
+        if ( state == ClassInfo::State::Registered ) return;
+
         auto offset = (char*)p - (char*)owner->objPtr;
         assert(std::find(memPtrOffsets.begin(), memPtrOffsets.end(), offset) == memPtrOffsets.end());
         memPtrOffsets.push_back(offset);
     }
 
-    void* ClassInfo::beginNewObj(int objSz, MetaInfo*& info)
+    char* ClassInfo::createObj(MetaInfo*& meta)
     {
-        isCreatingObj = true;
-        char* buf = alloc(this, objSz);
-        GC::get()->metaInfoSet.insert(info = new MetaInfo(this, buf));
+        auto buf = alloc(this);
+        meta = new MetaInfo(this, buf);
+        GC::get()->metaSet.insert(meta);
         return buf;
     }
 
-    void gc_collect(int step) { return GC::get()->collect(step); }
+
 }
