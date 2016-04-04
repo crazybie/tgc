@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "gcptr.h"
 #include <set>
-#include <algorithm>
-#include <assert.h>
 
 namespace gc
 {
@@ -46,7 +44,6 @@ namespace gc
         void onPtrChanged(PtrBase* p)
         {
             if ( !p->metaInfo )return;
-
             switch ( state ) {
             case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
             case State::ChildMarking:	markAsRoot(p); break;
@@ -116,12 +113,14 @@ namespace gc
                     info->color = MetaInfo::Black;
                     // IMPORTANT
                     auto cls = info->clsInfo;
-                    for ( size_t i = 0; i < cls->getSubPtrCnt(cls, info->objPtr); i++ ) {
-                        auto* subPtr = cls->getSubPtr(cls, info->objPtr, i);
+                    auto iter = cls->enumSubPtrs(cls, info->objPtr);
+                    while ( iter->hasNext() ) {
+                        auto* subPtr = iter->getNext();
                         if ( subPtr->metaInfo->color == MetaInfo::White ) {
                             grayObjs.push_back(subPtr->metaInfo);
                         }
                     }
+                    delete iter;
                 }
                 if ( !grayObjs.size() ) {
                     state = State::Sweeping;
@@ -157,7 +156,7 @@ namespace gc
     //////////////////////////////////////////////////////////////////////////
 
     bool ClassInfo::isCreatingObj = false;
-    ClassInfo ClassInfo::Empty{ 0, 0, 0,0,0 };
+    ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
     MetaInfo DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
     MetaInfo* findOwnerMeta(void* obj)
@@ -189,13 +188,10 @@ namespace gc
     PtrBase::~PtrBase() { GC::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { GC::get()->onPtrChanged(this); }
 
-    
     void ClassInfo::registerSubPtr(MetaInfo* owner, PtrBase* p)
     {
         if ( state == ClassInfo::State::Registered ) return;
-
         auto offset = (char*)p - (char*)owner->objPtr;
-        assert(std::find(memPtrOffsets.begin(), memPtrOffsets.end(), offset) == memPtrOffsets.end());
         memPtrOffsets.push_back(offset);
     }
 
@@ -206,6 +202,4 @@ namespace gc
         GC::get()->metaSet.insert(meta);
         return buf;
     }
-
-
 }

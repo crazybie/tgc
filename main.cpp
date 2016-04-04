@@ -270,12 +270,16 @@ struct g
 struct ArrayTest
 {
     gc_ptr<gc_vector<rc>> a;
+    gc_ptr<gc_map<int, rc>> b;
+    
 
     //gc_vector<rc> b;
     void f()
     {
-        a = make_gc_vector<rc>();
+        a = make_gc_vec<rc>();
         a->push_back(make_gc<rc>());
+        b = make_gc_map<int, rc>();
+        (*b)[0] = make_gc<rc>();
     }
 };
 
