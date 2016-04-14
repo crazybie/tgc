@@ -111,7 +111,6 @@ namespace gc
                     MetaInfo* info = grayObjs.back();
                     grayObjs.pop_back();
                     info->color = MetaInfo::Black;
-                    // IMPORTANT
                     auto cls = info->clsInfo;
                     auto iter = cls->enumSubPtrs(cls, info->objPtr);
                     while ( iter->hasNext() ) {

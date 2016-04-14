@@ -162,26 +162,28 @@ namespace gc
     }
 
     template<typename T>
-    struct gc_vector : private std::vector<gc_ptr<T>>
+    struct vector : public std::vector<gc_ptr<T>>
     {
-        typedef gc_ptr<T> ptr;
-        typedef vector<ptr> super;
+        typedef gc_ptr<T> elem;
+        typedef std::vector<elem> super;
 
-        void push_back(const ptr& t) { super::push_back(t); back().isRoot = 0; }
-        using super::size;
-
+        void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
+        
     private:
-        gc_vector() {}
+        vector() {}
 
         template<typename T>
-        friend gc_ptr<gc_vector<T>> make_gc_vec();
+        friend gc_ptr<vector<T>> make_gc_vec();
     };
 
     template<typename T>
-    gc_ptr<gc_vector<T>> make_gc_vec()
+    using gc_vector = gc_ptr<vector<T>>;
+
+    template<typename T>
+    gc_vector<T> make_gc_vec()
     {
         using namespace details;
-        typedef gc_vector<T> C;
+        typedef vector<T> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         if ( cls->state == ClassInfo::State::Unregistered ) {
@@ -207,26 +209,28 @@ namespace gc
 
 
     template<typename K, typename V>
-    struct gc_map : private std::map<K, gc_ptr<V>>
+    struct map : public std::map<K, gc_ptr<V>>
     {
-        typedef gc_ptr<V> ptr;
-        typedef std::map<K, ptr> super;
+        typedef gc_ptr<V> elem;
+        typedef std::map<K, elem> super;
 
-        ptr& operator[](const K& k) { auto& i = this->super::operator[](k); i.isRoot = 0; return i; }
-        using super::size;
-
+        elem& operator[](const K& k) { auto& i = this->super::operator[](k); i.isRoot = 0; return i; }
+        
     private:
-        gc_map() {}
+        map() {}
 
         template<typename K, typename V>
-        friend gc_ptr<gc_map<K, V>> make_gc_map();
+        friend gc_ptr<map<K, V>> make_gc_map();
     };
 
     template<typename K, typename V>
-    gc_ptr<gc_map<K,V>> make_gc_map()
+    using gc_map = gc_ptr<map<K,V>>;
+
+    template<typename K, typename V>
+    gc_map<K,V> make_gc_map()
     {
         using namespace details;
-        typedef gc_map<K, V> C;
+        typedef map<K, V> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         if ( cls->state == ClassInfo::State::Unregistered ) {
@@ -243,7 +247,6 @@ namespace gc
                 return new T((C*)o);
             };
         }
-
         MetaInfo* meta;
         auto obj = cls->createObj(meta);
         auto array = new ( obj ) C();
