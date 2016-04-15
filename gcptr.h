@@ -25,7 +25,7 @@ namespace gc
         public:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
-            MetaInfo*       metaInfo;
+            MetaInfo*       meta;
 
             PtrBase();
             PtrBase(void* obj);
@@ -38,16 +38,16 @@ namespace gc
             class SubPtrEnumerator
             {
             public:
-                virtual ~SubPtrEnumerator(){}
+                virtual ~SubPtrEnumerator() {}
                 virtual bool hasNext() = 0;
                 virtual PtrBase* getNext() = 0;
             };
 
             enum class State : char { Unregistered, Registered };
 
-            typedef void(*Dctor)( ClassInfo* cls, void* obj );
-            typedef char* ( *Alloc )( ClassInfo* cls );
-            typedef SubPtrEnumerator* (*EnumSubPtrs )( ClassInfo* cls, char* );
+            typedef void(*Dctor)(ClassInfo* cls, void* obj);
+            typedef char* (*Alloc)(ClassInfo* cls);
+            typedef SubPtrEnumerator* (*EnumSubPtrs)(ClassInfo* cls, char*);
 
             Alloc               alloc;
             Dctor               dctor;
@@ -62,28 +62,29 @@ namespace gc
 
             ClassInfo::ClassInfo(Alloc a, Dctor d, EnumSubPtrs enumSubPtrs_, int sz)
                 : alloc(a), dctor(d), enumSubPtrs(enumSubPtrs_), size(sz), state(State::Unregistered)
-            {}
+            {
+            }
             char* createObj(MetaInfo*& meta);
-            bool containsPtr(char* obj, char* ptr) { return obj <= ptr && ptr < obj + size; }
-            void registerSubPtr(MetaInfo* owner, PtrBase* ptr);
+            bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
+            void registerSubPtr(MetaInfo* owner, PtrBase* p);
 
             template<typename T>
             static ClassInfo* get()
             {
                 auto alloc = [](ClassInfo* cls) { cls->objCnt++;  return new char[sizeof(T)]; };
-                auto destroy = [](ClassInfo* cls, void* obj) { cls->objCnt--; ( (T*)obj )->~T(); delete[](char*)obj; };
-                auto enumSubPtrs = [] (ClassInfo* cls, char* o) ->SubPtrEnumerator*
-                { 
+                auto destroy = [](ClassInfo* cls, void* obj) { cls->objCnt--; ((T*)obj)->~T(); delete[](char*)obj; };
+                auto enumSubPtrs = [](ClassInfo* cls, char* o) ->SubPtrEnumerator*
+                {
                     struct T : SubPtrEnumerator
                     {
                         size_t i;
                         ClassInfo* cls;
                         char* o;
-                        T(ClassInfo* cls_, char* o_):cls(cls_),o(o_),i(0){}
+                        T(ClassInfo* cls_, char* o_) :cls(cls_), o(o_), i(0) {}
                         bool hasNext() { return i < cls->memPtrOffsets.size(); }
-                        PtrBase* getNext() { return (PtrBase*)( o + cls->memPtrOffsets[i++] ); }
+                        PtrBase* getNext() { return (PtrBase*)(o + cls->memPtrOffsets[i++]); }
                     };
-                    return new T{cls, o };
+                    return new T{ cls, o };
                 };
 
                 static ClassInfo i{ alloc, destroy, enumSubPtrs, sizeof(T) };
@@ -94,60 +95,60 @@ namespace gc
 
 
     template <typename T>
-    class gc_ptr : public details::PtrBase
+    class ptr : public details::PtrBase
     {
     public:
         // Constructors
 
-        gc_ptr() : ptr(0) {}
-        gc_ptr(T* obj, MetaInfo* info) { reset(obj, info); }
-        explicit gc_ptr(T* obj) : PtrBase(obj), ptr(obj) {}
+        ptr() : p(0) {}
+        ptr(T* obj, MetaInfo* info) { reset(obj, info); }
+        explicit ptr(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
-        gc_ptr(const gc_ptr<U>& r) { reset(r.ptr, r.metaInfo); }
-        gc_ptr(const gc_ptr& r) { reset(r.ptr, r.metaInfo); }
-        gc_ptr(gc_ptr&& r) { reset(r.ptr, r.metaInfo); r = nullptr; }
+        ptr(const ptr<U>& r) { reset(r.p, r.meta); }
+        ptr(const ptr& r) { reset(r.p, r.meta); }
+        ptr(ptr&& r) { reset(r.p, r.meta); r = nullptr; }
 
         // Operators
 
         template <typename U>
-        gc_ptr& operator=(const gc_ptr<U>& r) { reset(r.ptr, r.metaInfo);  return *this; }
-        gc_ptr& operator=(const gc_ptr& r) { reset(r.ptr, r.metaInfo);  return *this; }
-        gc_ptr& operator=(gc_ptr&& r) { reset(r.ptr, r.metaInfo); r.metaInfo = 0; r.ptr = 0; return *this; }
-        T* operator->() const { return ptr; }
-        T& operator*() const { return *ptr; }
-        explicit operator bool() const { return ptr != 0; }
-        bool operator==(const gc_ptr& r)const { return metaInfo == r.metaInfo; }
-        bool operator!=(const gc_ptr& r)const { return metaInfo != r.metaInfo; }
+        ptr& operator=(const ptr<U>& r) { reset(r.p, r.meta);  return *this; }
+        ptr& operator=(const ptr& r) { reset(r.p, r.meta);  return *this; }
+        ptr& operator=(ptr&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
+        T* operator->() const { return p; }
+        T& operator*() const { return *p; }
+        T& operator()() const { return *p; } // support vec_ptr()[1] rather than (*vec_ptr)[1]
+        explicit operator bool() const { return p != 0; }
+        bool operator==(const ptr& r)const { return meta == r.meta; }
+        bool operator!=(const ptr& r)const { return meta != r.meta; }
         void operator=(T*) = delete;
-        gc_ptr& operator=(decltype( nullptr )) { metaInfo = 0; ptr = 0; return *this; }
+        ptr& operator=(decltype(nullptr)) { meta = 0; p = 0; return *this; }
 
         // Methods
 
-        void reset(T* o) { gc_ptr(o).swap(*this); }
-        void reset(T* o, MetaInfo* n) { ptr = o; metaInfo = n; onPtrChanged(); }
-        void swap(gc_ptr& r)
+        void reset(T* o) { ptr(o).swap(*this); }
+        void reset(T* o, MetaInfo* n) { p = o; meta = n; onPtrChanged(); }
+        void swap(ptr& r)
         {
-            T* temp = ptr;
-            MetaInfo* tinfo = metaInfo;
-            reset(r.ptr, r.metaInfo);
+            T* temp = p;
+            MetaInfo* tinfo = meta;
+            reset(r.p, r.meta);
             r.reset(temp, tinfo);
         }
 
     private:
         template<typename U>
-        friend class gc_ptr;
+        friend class ptr;
 
-        T*  ptr;
+        T*  p;
     };
 
     template<typename T>
-    gc_ptr<T> gc_from(T* t) { return gc_ptr<T>(t); }
+    ptr<T> gc_from(T* t) { return ptr<T>(t); }
 
     void gc_collect(int step);
 
-
     template<typename T, typename... Args>
-    gc_ptr<T> make_gc(Args&&... args)
+    ptr<T> make_gc(Args&&... args)
     {
         using namespace details;
 
@@ -155,40 +156,46 @@ namespace gc
         cls->isCreatingObj = true;
         MetaInfo* meta;
         char* buf = cls->createObj(meta);
-        T* obj = new ( buf )T(std::forward<Args>(args)...);
+        T* obj = new (buf)T(std::forward<Args>(args)...);
         cls->state = ClassInfo::State::Registered;
         cls->isCreatingObj = false;
-        return gc_ptr<T>(obj, meta);
+        return ptr<T>(obj, meta);
     }
 
+    /// ============= Vector ================
+
     template<typename T>
-    struct vector : public std::vector<gc_ptr<T>>
+    struct vector : public std::vector<T> {};
+
+    template<typename T>
+    using vector_ptr = ptr<vector<T>>;
+
+    template<typename T>
+    struct vector<ptr<T>> : public std::vector<ptr<T>>
     {
-        typedef gc_ptr<T> elem;
+        typedef ptr<T> elem;
         typedef std::vector<elem> super;
 
         void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
-        
+
     private:
         vector() {}
 
         template<typename T>
-        friend gc_ptr<vector<T>> make_gc_vec();
+        friend vector_ptr<ptr<T>> make_gc_vec();
     };
-
+    
     template<typename T>
-    using gc_vector = gc_ptr<vector<T>>;
-
-    template<typename T>
-    gc_vector<T> make_gc_vec()
+    vector_ptr<ptr<T>> make_gc_vec()
     {
         using namespace details;
-        typedef vector<T> C;
+        typedef vector<ptr<T>> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
-        if ( cls->state == ClassInfo::State::Unregistered ) {
+        if (cls->state == ClassInfo::State::Unregistered) {
             cls->state = ClassInfo::State::Registered;
-            cls->enumSubPtrs = [](ClassInfo* cls, char* o) -> ClassInfo::SubPtrEnumerator* {
+            cls->enumSubPtrs = [](ClassInfo* cls, char* o) -> ClassInfo::SubPtrEnumerator*
+            {
                 struct T : ClassInfo::SubPtrEnumerator
                 {
                     C* o;
@@ -200,42 +207,45 @@ namespace gc
                 return new T((C*)o);
             };
         }
-
         MetaInfo* meta;
         auto obj = cls->createObj(meta);
-        auto array = new ( obj ) C();
-        return gc_ptr<C>(array, meta);
+        return ptr<C>(new (obj)C(), meta);
     }
 
+    /// ============= Map ================
 
     template<typename K, typename V>
-    struct map : public std::map<K, gc_ptr<V>>
+    struct map : public std::map<K, V> {};
+
+    template<typename K, typename V>
+    using map_ptr = ptr<map<K, V>>;
+
+    template<typename K, typename V>
+    struct map<K, ptr<V>> : public std::map<K, ptr<V>>
     {
-        typedef gc_ptr<V> elem;
+        typedef ptr<V> elem;
         typedef std::map<K, elem> super;
 
-        elem& operator[](const K& k) { auto& i = this->super::operator[](k); i.isRoot = 0; return i; }
-        
+        elem& operator[](const K& k) { auto& i = super::operator[](k); i.isRoot = 0; return i; }
+
     private:
         map() {}
 
         template<typename K, typename V>
-        friend gc_ptr<map<K, V>> make_gc_map();
+        friend map_ptr<K, ptr<V> > make_gc_map();
     };
 
     template<typename K, typename V>
-    using gc_map = gc_ptr<map<K,V>>;
-
-    template<typename K, typename V>
-    gc_map<K,V> make_gc_map()
+    map_ptr<K, ptr<V>> make_gc_map()
     {
         using namespace details;
-        typedef map<K, V> C;
+        typedef map<K, ptr<V>> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
-        if ( cls->state == ClassInfo::State::Unregistered ) {
+        if (cls->state == ClassInfo::State::Unregistered) {
             cls->state = ClassInfo::State::Registered;
-            cls->enumSubPtrs = [](ClassInfo* cls, char* o) -> ClassInfo::SubPtrEnumerator* {
+            cls->enumSubPtrs = [](ClassInfo* cls, char* o) -> ClassInfo::SubPtrEnumerator*
+            {
                 struct T : ClassInfo::SubPtrEnumerator
                 {
                     C* o;
@@ -248,9 +258,8 @@ namespace gc
             };
         }
         MetaInfo* meta;
-        auto obj = cls->createObj(meta);
-        auto array = new ( obj ) C();
-        return gc_ptr<C>(array, meta);
+        auto obj = cls->createObj(meta);        
+        return ptr<C>(new (obj)C(), meta);
     }
 }
 

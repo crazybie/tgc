@@ -43,17 +43,17 @@ namespace gc
 
         void onPtrChanged(PtrBase* p)
         {
-            if ( !p->metaInfo )return;
+            if ( !p->meta )return;
             switch ( state ) {
             case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
             case State::ChildMarking:	markAsRoot(p); break;
             case State::Sweeping:
-                if ( p->metaInfo->color == MetaInfo::White ) {
-                    if ( *p->metaInfo < **nextSweeping ) {
+                if ( p->meta->color == MetaInfo::White ) {
+                    if ( *p->meta < **nextSweeping ) {
                         // already white and ready for the next rootMarking.
                     } else {
                         // mark it alive to bypass sweeping.
-                        p->metaInfo->color = MetaInfo::Black;
+                        p->meta->color = MetaInfo::Black;
                     }
                 }
                 break;
@@ -62,9 +62,9 @@ namespace gc
         void markAsRoot(PtrBase* p)
         {
             if ( p->isRoot == 1 ) {
-                if ( p->metaInfo->color == MetaInfo::White ) {
-                    p->metaInfo->color = MetaInfo::Gray;
-                    grayObjs.push_back(p->metaInfo);
+                if ( p->meta->color == MetaInfo::White ) {
+                    p->meta->color = MetaInfo::Gray;
+                    grayObjs.push_back(p->meta);
                 }
             }
         }
@@ -80,7 +80,7 @@ namespace gc
             pointer->index = p->index;
             pointers.pop_back();
             // pointers列表变动会影响rootMarking
-            if ( !pointer->metaInfo ) return;
+            if ( !pointer->meta ) return;
             if ( state == GC::State::RootMarking ) {
                 if ( p->index < nextRootMarking ) {
                     markAsRoot(pointer);
@@ -95,7 +95,7 @@ namespace gc
             case State::RootMarking:
                 for ( ; nextRootMarking < pointers.size() && stepCnt--; nextRootMarking++ ) {
                     auto p = pointers[nextRootMarking];
-                    if ( !p->metaInfo ) continue;
+                    if ( !p->meta ) continue;
                     markAsRoot(p);
                 }
                 if ( nextRootMarking >= pointers.size() ) {
@@ -115,8 +115,8 @@ namespace gc
                     auto iter = cls->enumSubPtrs(cls, info->objPtr);
                     while ( iter->hasNext() ) {
                         auto* subPtr = iter->getNext();
-                        if ( subPtr->metaInfo->color == MetaInfo::White ) {
-                            grayObjs.push_back(subPtr->metaInfo);
+                        if ( subPtr->meta->color == MetaInfo::White ) {
+                            grayObjs.push_back(subPtr->meta);
                         }
                     }
                     delete iter;
@@ -182,8 +182,8 @@ namespace gc
         }
     }
 
-    PtrBase::PtrBase() : metaInfo(0), isRoot(1) { registerPtr(this); }
-    PtrBase::PtrBase(void* obj) : isRoot(1) { registerPtr(this); metaInfo = findOwnerMeta(obj); }
+    PtrBase::PtrBase() : meta(0), isRoot(1) { registerPtr(this); }
+    PtrBase::PtrBase(void* obj) : isRoot(1) { registerPtr(this); meta = findOwnerMeta(obj); }
     PtrBase::~PtrBase() { GC::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { GC::get()->onPtrChanged(this); }
 
