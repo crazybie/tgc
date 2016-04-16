@@ -8,15 +8,17 @@
 #include <vld.h>
 
 
-using namespace std;
 using namespace gc;
+using std::string;
+using std::cout;
+using std::endl;
 
 #ifndef _DEBUG
 #define PROFILE
 #endif
 
 #ifdef PROFILE
-#define PROFILE_LOOP for(int i=0;i<500*(rand()%5+5);i++)
+#define PROFILE_LOOP for(int i=0;i<5000*(rand()%5+5);i++)
 #define cout comment(/)
 #define comment(a) /a
 #else
@@ -284,7 +286,7 @@ struct ArrayTest
 
         b->find(1);
 
-        c = make_gc<gc::map<int, rc>>();
+        c = make_gc<map<int, rc>>();
     }
 };
 

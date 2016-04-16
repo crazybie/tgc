@@ -177,6 +177,7 @@ namespace gc
         typedef std::vector<elem> super;
 
         void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
+        void push_back(elem&& t) { super::push_back(t); back().isRoot = 0; }
 
     private:
         vector() {}
@@ -225,8 +226,10 @@ namespace gc
     {
         typedef ptr<V> elem;
         typedef std::map<K, elem> super;
+        typedef typename super::value_type value_type;
 
         elem& operator[](const K& k) { auto& i = super::operator[](k); i.isRoot = 0; return i; }
+        void insert(const value_type& v) { super::insert(v)->second.isRoot = 0; }
 
     private:
         map() {}
