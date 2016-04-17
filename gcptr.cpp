@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "gcptr.h"
 #include <set>
+#include <limits.h>
 
 namespace gc
 {
@@ -38,7 +39,7 @@ namespace gc
         State				    state;
 
         GC() : state(State::RootMarking), nextRootMarking(0) {}
-        ~GC() { collect((unsigned)-1); }
+        ~GC() { collect(INT_MAX); }
         static GC* get() { static GC i; return &i; }
 
         void onPtrChanged(PtrBase* p)
@@ -93,7 +94,7 @@ namespace gc
 
             _RootMarking:
             case State::RootMarking:
-                for ( ; nextRootMarking < pointers.size() && stepCnt--; nextRootMarking++ ) {
+                for ( ; nextRootMarking < pointers.size() && stepCnt-- >0; nextRootMarking++ ) {
                     auto p = pointers[nextRootMarking];
                     if ( !p->meta ) continue;
                     markAsRoot(p);
@@ -107,13 +108,13 @@ namespace gc
 
             _ChildMarking:
             case State::ChildMarking:
-                while ( grayObjs.size() && stepCnt-- ) {
+                while ( grayObjs.size() && stepCnt-- >0 ) {
                     MetaInfo* info = grayObjs.back();
                     grayObjs.pop_back();
                     info->color = MetaInfo::Black;
                     auto cls = info->clsInfo;
                     auto iter = cls->enumSubPtrs(cls, info->objPtr);
-                    while ( iter->hasNext() ) {
+                    while ( iter->hasNext() && stepCnt-- >0 ) {
                         auto* subPtr = iter->getNext();
                         if ( subPtr->meta->color == MetaInfo::White ) {
                             grayObjs.push_back(subPtr->meta);
@@ -130,7 +131,7 @@ namespace gc
 
             _Sweeping:
             case State::Sweeping:
-                for ( ; nextSweeping != metaSet.end() && stepCnt--;) {
+                for ( ; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
                     MetaInfo* meta = *nextSweeping;
                     if ( meta->color == MetaInfo::White ) {
                         delete meta;
@@ -177,7 +178,7 @@ namespace gc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->isRoot = 0; // IMPORTANT
+            p->isRoot = 0;
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }

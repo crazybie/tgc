@@ -177,7 +177,7 @@ namespace gc
         typedef std::vector<elem> super;
 
         void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
-        void push_back(elem&& t) { super::push_back(t); back().isRoot = 0; }
+        void push_back(elem&& t) { super::push_back(std::move(t)); back().isRoot = 0; }
 
     private:
         vector() {}
