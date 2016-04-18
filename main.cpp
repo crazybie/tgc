@@ -286,7 +286,13 @@ struct ArrayTest
 
         b->find(1);
 
-        c = make_gc<map<int, rc>>();
+        c = make_gc<map<int, rc>>();        
+
+        bar(b);
+    }
+    void bar(map_ptr<int, ptr<rc>> cc)
+    {
+        cc->insert(std::make_pair(1, make_gc<rc>()));
     }
 };
 

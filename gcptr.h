@@ -178,6 +178,7 @@ namespace gc
 
         void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
         void push_back(elem&& t) { super::push_back(std::move(t)); back().isRoot = 0; }
+        void resize(int sz) { super::resize(sz); for ( auto& i : *this ) i.isRoot = 0; }
 
     private:
         vector() {}
@@ -229,7 +230,7 @@ namespace gc
         typedef typename super::value_type value_type;
 
         elem& operator[](const K& k) { auto& i = super::operator[](k); i.isRoot = 0; return i; }
-        void insert(const value_type& v) { super::insert(v)->second.isRoot = 0; }
+        void insert(const value_type& v) { super::insert(v).first->second.isRoot = 0; }
 
     private:
         map() {}

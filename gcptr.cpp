@@ -114,10 +114,10 @@ namespace gc
                     info->color = MetaInfo::Black;
                     auto cls = info->clsInfo;
                     auto iter = cls->enumSubPtrs(cls, info->objPtr);
-                    while ( iter->hasNext() && stepCnt-- >0 ) {
-                        auto* subPtr = iter->getNext();
-                        if ( subPtr->meta->color == MetaInfo::White ) {
-                            grayObjs.push_back(subPtr->meta);
+                    for (; iter->hasNext(); stepCnt--) {
+                        auto* meta = iter->getNext()->meta;
+                        if ( meta->color == MetaInfo::White ) {
+                            grayObjs.push_back(meta);
                         }
                     }
                     delete iter;
