@@ -152,7 +152,7 @@ void test()
             // line of code as well and notice the behavior change at run time.
             //		p1 = &p3->name;
             ptr<b1> p4(make_gc<d2>("second"));
-            ptr<b2> pz(dynamic_cast<b2*>(p4.operator ->()));
+            ptr<b2> pz(dynamic_cast<b2*>(&*p4));
             if (static_cast<void*>(p4.operator ->()) == static_cast<void*>(pz.operator ->()))
                 throw std::runtime_error("unexpected");
 

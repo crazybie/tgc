@@ -16,7 +16,7 @@
 
 namespace gc
 {
-    struct MetaInfo;
+    struct Meta;
 
     namespace details
     {
@@ -25,7 +25,7 @@ namespace gc
         public:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
-            MetaInfo*       meta;
+            Meta*           meta;
 
             PtrBase();
             PtrBase(void* obj);
@@ -64,9 +64,9 @@ namespace gc
                 : alloc(a), dctor(d), enumSubPtrs(enumSubPtrs_), size(sz), state(State::Unregistered)
             {
             }
-            char* createObj(MetaInfo*& meta);
+            char* createObj(Meta*& meta);
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
-            void registerSubPtr(MetaInfo* owner, PtrBase* p);
+            void registerSubPtr(Meta* owner, PtrBase* p);
 
             template<typename T>
             static ClassInfo* get()
@@ -101,7 +101,7 @@ namespace gc
         // Constructors
 
         ptr() : p(0) {}
-        ptr(T* obj, MetaInfo* info) { reset(obj, info); }
+        ptr(T* obj, Meta* info) { reset(obj, info); }
         explicit ptr(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
         ptr(const ptr<U>& r) { reset(r.p, r.meta); }
@@ -126,11 +126,11 @@ namespace gc
         // Methods
 
         void reset(T* o) { ptr(o).swap(*this); }
-        void reset(T* o, MetaInfo* n) { p = o; meta = n; onPtrChanged(); }
+        void reset(T* o, Meta* n) { p = o; meta = n; onPtrChanged(); }
         void swap(ptr& r)
         {
             T* temp = p;
-            MetaInfo* tinfo = meta;
+            Meta* tinfo = meta;
             reset(r.p, r.meta);
             r.reset(temp, tinfo);
         }
@@ -154,7 +154,7 @@ namespace gc
 
         ClassInfo* cls = ClassInfo::get<T>();
         cls->isCreatingObj = true;
-        MetaInfo* meta;
+        Meta* meta;
         char* buf = cls->createObj(meta);
         T* obj = new (buf)T(std::forward<Args>(args)...);
         cls->state = ClassInfo::State::Registered;
@@ -209,7 +209,7 @@ namespace gc
                 return new T((C*)o);
             };
         }
-        MetaInfo* meta;
+        Meta* meta;
         auto obj = cls->createObj(meta);
         return ptr<C>(new (obj)C(), meta);
     }
@@ -261,7 +261,7 @@ namespace gc
                 return new T((C*)o);
             };
         }
-        MetaInfo* meta;
+        Meta* meta;
         auto obj = cls->createObj(meta);        
         return ptr<C>(new (obj)C(), meta);
     }

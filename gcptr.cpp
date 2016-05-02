@@ -7,7 +7,7 @@ namespace gc
 {
     using namespace details;
 
-    struct MetaInfo
+    struct Meta
     {
         enum MarkColor : char { White, Gray, Black };
 
@@ -17,22 +17,22 @@ namespace gc
 
         struct Less
         {
-            bool operator()(MetaInfo* x, MetaInfo* y)const { return *x < *y; }
+            bool operator()(Meta* x, Meta* y)const { return *x < *y; }
         };
 
-        explicit MetaInfo(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
-        ~MetaInfo() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
-        bool operator<(MetaInfo& r) { return objPtr + clsInfo->size <= r.objPtr; }
+        explicit Meta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
+        ~Meta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
+        bool operator<(Meta& r) { return objPtr + clsInfo->size <= r.objPtr; }
     };
 
 
     struct GC
     {
-        typedef std::set<MetaInfo*, MetaInfo::Less> MetaSet;
+        typedef std::set<Meta*, Meta::Less> MetaSet;
         enum class State { RootMarking, ChildMarking, Sweeping };
 
         std::vector<PtrBase*>   pointers;
-        std::vector<MetaInfo*>  grayObjs;
+        std::vector<Meta*>      grayObjs;
         MetaSet				    metaSet;
         size_t				    nextRootMarking;
         MetaSet::iterator	    nextSweeping;
@@ -49,12 +49,12 @@ namespace gc
             case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
             case State::ChildMarking:	markAsRoot(p); break;
             case State::Sweeping:
-                if ( p->meta->color == MetaInfo::White ) {
+                if ( p->meta->color == Meta::White ) {
                     if ( *p->meta < **nextSweeping ) {
                         // already white and ready for the next rootMarking.
                     } else {
                         // mark it alive to bypass sweeping.
-                        p->meta->color = MetaInfo::Black;
+                        p->meta->color = Meta::Black;
                     }
                 }
                 break;
@@ -63,8 +63,8 @@ namespace gc
         void markAsRoot(PtrBase* p)
         {
             if ( p->isRoot == 1 ) {
-                if ( p->meta->color == MetaInfo::White ) {
-                    p->meta->color = MetaInfo::Gray;
+                if ( p->meta->color == Meta::White ) {
+                    p->meta->color = Meta::Gray;
                     grayObjs.push_back(p->meta);
                 }
             }
@@ -109,14 +109,14 @@ namespace gc
             _ChildMarking:
             case State::ChildMarking:
                 while ( grayObjs.size() && stepCnt-- >0 ) {
-                    MetaInfo* info = grayObjs.back();
+                    Meta* info = grayObjs.back();
                     grayObjs.pop_back();
-                    info->color = MetaInfo::Black;
+                    info->color = Meta::Black;
                     auto cls = info->clsInfo;
                     auto iter = cls->enumSubPtrs(cls, info->objPtr);
                     for (; iter->hasNext(); stepCnt--) {
                         auto* meta = iter->getNext()->meta;
-                        if ( meta->color == MetaInfo::White ) {
+                        if ( meta->color == Meta::White ) {
                             grayObjs.push_back(meta);
                         }
                     }
@@ -132,13 +132,13 @@ namespace gc
             _Sweeping:
             case State::Sweeping:
                 for ( ; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
-                    MetaInfo* meta = *nextSweeping;
-                    if ( meta->color == MetaInfo::White ) {
+                    Meta* meta = *nextSweeping;
+                    if ( meta->color == Meta::White ) {
                         delete meta;
                         nextSweeping = metaSet.erase(nextSweeping);
                         continue;
                     }
-                    meta->color = MetaInfo::White;
+                    meta->color = Meta::White;
                     ++nextSweeping;
                 }
                 if ( nextSweeping == metaSet.end() ) {
@@ -157,9 +157,9 @@ namespace gc
 
     bool ClassInfo::isCreatingObj = false;
     ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
-    MetaInfo DummyMetaInfo(&ClassInfo::Empty, nullptr);
+    Meta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
-    MetaInfo* findOwnerMeta(void* obj)
+    Meta* findOwnerMeta(void* obj)
     {
         auto& objs = GC::get()->metaSet;
         DummyMetaInfo.objPtr = (char*)obj;
@@ -188,17 +188,17 @@ namespace gc
     PtrBase::~PtrBase() { GC::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { GC::get()->onPtrChanged(this); }
 
-    void ClassInfo::registerSubPtr(MetaInfo* owner, PtrBase* p)
+    void ClassInfo::registerSubPtr(Meta* owner, PtrBase* p)
     {
         if ( state == ClassInfo::State::Registered ) return;
         auto offset = (char*)p - (char*)owner->objPtr;
         memPtrOffsets.push_back(offset);
     }
 
-    char* ClassInfo::createObj(MetaInfo*& meta)
+    char* ClassInfo::createObj(Meta*& meta)
     {
         auto buf = alloc(this);
-        meta = new MetaInfo(this, buf);
+        meta = new Meta(this, buf);
         GC::get()->metaSet.insert(meta);
         return buf;
     }
