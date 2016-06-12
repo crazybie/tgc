@@ -116,7 +116,6 @@ namespace slgc
         gc& operator=(gc&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
         T* operator->() const { return p; }
         T& operator*() const { return *p; }
-        T& operator()() const { return *p; } // support vec_ptr()[1] rather than (*vec_ptr)[1]
         explicit operator bool() const { return p != 0; }
         bool operator==(const gc& r)const { return meta == r.meta; }
         bool operator!=(const gc& r)const { return meta != r.meta; }
@@ -135,7 +134,7 @@ namespace slgc
             r.reset(temp, tinfo);
         }
 
-    private:
+    protected:
         template<typename U>
         friend class gc;
 
@@ -168,7 +167,14 @@ namespace slgc
     struct vector : public std::vector<T> {};
 
     template<typename T>
-    using gc_vector = gc<vector<gc<T>>>;
+    struct gc_vector : public gc<vector<gc<T>>>
+    {
+        using super = gc<vector<gc<T>>>;
+        using gc::gc;
+
+        const gc<T>& operator[](int i) const { return (*p)[i]; }
+        gc<T>& operator[](int i) { return (*p)[i]; }
+    };
 
     template<typename T>
     struct vector<gc<T>> : public std::vector<gc<T>>
@@ -211,7 +217,7 @@ namespace slgc
         }
         Meta* meta;
         auto obj = cls->createObj(meta);
-        return gc<C>(new (obj)C(), meta);
+        return gc_vector<T>(new (obj)C(), meta);
     }
 
     /// ============= Map ================
@@ -220,7 +226,11 @@ namespace slgc
     struct map : public std::map<K, V> {};
 
     template<typename K, typename V>
-    using gc_map = gc<map<K, gc<V>>>;
+    struct gc_map : public gc<map<K, gc<V>>>
+    {
+        using gc::gc;
+        gc<V>& operator[](const K& i) { auto& r = ( *p )[i]; r.isRoot = 0; return r; }
+    };
 
     template<typename K, typename V>
     struct map<K, gc<V>> : public std::map<K, gc<V>>
@@ -229,7 +239,6 @@ namespace slgc
         typedef std::map<K, elem> super;
         typedef typename super::value_type value_type;
 
-        elem& operator[](const K& k) { auto& i = super::operator[](k); i.isRoot = 0; return i; }
         void insert(const value_type& v) { super::insert(v).first->second.isRoot = 0; }
 
     private:
@@ -263,7 +272,7 @@ namespace slgc
         }
         Meta* meta;
         auto obj = cls->createObj(meta);        
-        return gc<C>(new (obj)C(), meta);
+        return gc_map<K,V>(new (obj)C(), meta);
     }
 }
 

@@ -280,8 +280,8 @@ struct ArrayTest
         a = make_gc_vec<rc>();
         a->push_back(make_gc<rc>());
         b = make_gc_map<int, rc>();
-        (*b)[0] = make_gc<rc>();
-        b()[1] = make_gc<rc>();
+        b[0] = make_gc<rc>();
+        b[1] = make_gc<rc>();
 
         b->find(1);
         bar(b);
