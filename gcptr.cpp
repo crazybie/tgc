@@ -153,6 +153,8 @@ namespace slgc
         
     void gc_collect(int step) { return Impl::get()->collect(step); }
 
+
+
     //////////////////////////////////////////////////////////////////////////
 
     bool ClassInfo::isCreatingObj = false;
@@ -202,4 +204,6 @@ namespace slgc
         Impl::get()->metaSet.insert(meta);
         return buf;
     }
+
+
 }
