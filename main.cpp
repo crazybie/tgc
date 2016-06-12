@@ -8,7 +8,7 @@
 #include <vld.h>
 
 
-using namespace gc;
+using namespace slgc;
 using std::string;
 using std::cout;
 using std::endl;
@@ -125,7 +125,7 @@ void test()
     {
         // Test "recursive" construction (insure that calls to collect during construction
         // do not cause premature collection of the node).
-        ptr<rc> prc(make_gc<rc>());
+        gc<rc> prc(make_gc<rc>());
 
         // The following lines may be uncommented to illustrate one behavior of the
         // bug in VC++ in handling an assignment to a "real pointer", which is clearly
@@ -136,10 +136,10 @@ void test()
         //	gc_ptr<circ> pfail;
         //	pfail = gcnew circ("fail");
 
-        ptr<string> p1;
+        gc<string> p1;
         {
-            ptr<d1> p2(make_gc<d1>("first"));
-            ptr<b1> p3(p2);
+            gc<d1> p2(make_gc<d1>("first"));
+            gc<b1> p3(p2);
             p1.reset(&p3->name);
             // The following line may be uncommented to illustrate another behavior of the
             // bug in VC++ in handling an assignment to a "real pointer", which is clearly
@@ -151,8 +151,8 @@ void test()
             // the code in Debug.  To really see the danger here comment out the previous
             // line of code as well and notice the behavior change at run time.
             //		p1 = &p3->name;
-            ptr<b1> p4(make_gc<d2>("second"));
-            ptr<b2> pz(dynamic_cast<b2*>(&*p4));
+            gc<b1> p4(make_gc<d2>("second"));
+            gc<b2> pz(dynamic_cast<b2*>(&*p4));
             if (static_cast<void*>(p4.operator ->()) == static_cast<void*>(pz.operator ->()))
                 throw std::runtime_error("unexpected");
 
@@ -179,7 +179,7 @@ struct circ
         objcount--;
     }
 
-    ptr<circ> ptr;
+    gc<circ> ptr;
 
     string name;
 };
@@ -214,7 +214,7 @@ void testMoveCtor()
         };
 
         auto p = f();
-        ptr<b1> p2 = p;
+        gc<b1> p2 = p;
         p2 = f();
     }
 }
@@ -231,23 +231,23 @@ void testEmpty()
 {
     PROFILE_LOOP
     {
-        ptr<b1> p(make_gc<b1>("a"));
-        ptr<b1> emptry;
+        gc<b1> p(make_gc<b1>("a"));
+        gc<b1> emptry;
     }    
 }
 
 void testInsert()
 {
 #ifdef PROFILE
-    std::vector<ptr<b1>> objs;
+    std::vector<gc<b1>> objs;
     objs.reserve(2000);
     for (int k = 0; k < 2000; k++) {
-        ptr<b1> p(make_gc<b1>("a"));
+        gc<b1> p(make_gc<b1>("a"));
         objs.push_back(p);
     }
     PROFILE_LOOP
     {
-        ptr<b1> p = make_gc<b1>("a");
+        gc<b1> p = make_gc<b1>("a");
         objs[rand() % objs.size()] = p;
     }
 #endif
@@ -271,11 +271,10 @@ struct g
 
 struct ArrayTest
 {
-    vector_ptr<ptr<rc>> a;
-    map_ptr<int, ptr<rc>> b;   
-    map_ptr<int, rc> c;
-
-    //vector_ptr<rc> b;
+    gc_vector<rc> a;
+    gc_map<int, rc> b;   
+    gc_map<int, rc> c;
+        
     void f()
     {
         a = make_gc_vec<rc>();
@@ -285,18 +284,15 @@ struct ArrayTest
         b()[1] = make_gc<rc>();
 
         b->find(1);
-
-        c = make_gc<map<int, rc>>();        
-
         bar(b);
     }
-    void bar(map_ptr<int, ptr<rc>> cc)
+    void bar(gc_map<int, rc> cc)
     {
         cc->insert(std::make_pair(1, make_gc<rc>()));
     }
 };
 
-ptr<ArrayTest> a;
+gc<ArrayTest> a;
 
 void testArray()
 {    

@@ -14,7 +14,7 @@
 #include <vector>
 #include <map>
 
-namespace gc
+namespace slgc
 {
     struct Meta;
 
@@ -95,39 +95,39 @@ namespace gc
 
 
     template <typename T>
-    class ptr : public details::PtrBase
+    class gc : public details::PtrBase
     {
     public:
         // Constructors
 
-        ptr() : p(0) {}
-        ptr(T* obj, Meta* info) { reset(obj, info); }
-        explicit ptr(T* obj) : PtrBase(obj), p(obj) {}
+        gc() : p(0) {}
+        gc(T* obj, Meta* info) { reset(obj, info); }
+        explicit gc(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
-        ptr(const ptr<U>& r) { reset(r.p, r.meta); }
-        ptr(const ptr& r) { reset(r.p, r.meta); }
-        ptr(ptr&& r) { reset(r.p, r.meta); r = nullptr; }
+        gc(const gc<U>& r) { reset(r.p, r.meta); }
+        gc(const gc& r) { reset(r.p, r.meta); }
+        gc(gc&& r) { reset(r.p, r.meta); r = nullptr; }
 
         // Operators
 
         template <typename U>
-        ptr& operator=(const ptr<U>& r) { reset(r.p, r.meta);  return *this; }
-        ptr& operator=(const ptr& r) { reset(r.p, r.meta);  return *this; }
-        ptr& operator=(ptr&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
+        gc& operator=(const gc<U>& r) { reset(r.p, r.meta);  return *this; }
+        gc& operator=(const gc& r) { reset(r.p, r.meta);  return *this; }
+        gc& operator=(gc&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
         T* operator->() const { return p; }
         T& operator*() const { return *p; }
         T& operator()() const { return *p; } // support vec_ptr()[1] rather than (*vec_ptr)[1]
         explicit operator bool() const { return p != 0; }
-        bool operator==(const ptr& r)const { return meta == r.meta; }
-        bool operator!=(const ptr& r)const { return meta != r.meta; }
+        bool operator==(const gc& r)const { return meta == r.meta; }
+        bool operator!=(const gc& r)const { return meta != r.meta; }
         void operator=(T*) = delete;
-        ptr& operator=(decltype(nullptr)) { meta = 0; p = 0; return *this; }
+        gc& operator=(decltype(nullptr)) { meta = 0; p = 0; return *this; }
 
         // Methods
 
-        void reset(T* o) { ptr(o).swap(*this); }
+        void reset(T* o) { gc(o).swap(*this); }
         void reset(T* o, Meta* n) { p = o; meta = n; onPtrChanged(); }
-        void swap(ptr& r)
+        void swap(gc& r)
         {
             T* temp = p;
             Meta* tinfo = meta;
@@ -137,18 +137,18 @@ namespace gc
 
     private:
         template<typename U>
-        friend class ptr;
+        friend class gc;
 
         T*  p;
     };
 
     template<typename T>
-    ptr<T> gc_from(T* t) { return ptr<T>(t); }
+    gc<T> gc_from(T* t) { return gc<T>(t); }
 
     void gc_collect(int step);
 
     template<typename T, typename... Args>
-    ptr<T> make_gc(Args&&... args)
+    gc<T> make_gc(Args&&... args)
     {
         using namespace details;
 
@@ -159,7 +159,7 @@ namespace gc
         T* obj = new (buf)T(std::forward<Args>(args)...);
         cls->state = ClassInfo::State::Registered;
         cls->isCreatingObj = false;
-        return ptr<T>(obj, meta);
+        return gc<T>(obj, meta);
     }
 
     /// ============= Vector ================
@@ -168,12 +168,12 @@ namespace gc
     struct vector : public std::vector<T> {};
 
     template<typename T>
-    using vector_ptr = ptr<vector<T>>;
+    using gc_vector = gc<vector<gc<T>>>;
 
     template<typename T>
-    struct vector<ptr<T>> : public std::vector<ptr<T>>
+    struct vector<gc<T>> : public std::vector<gc<T>>
     {
-        typedef ptr<T> elem;
+        typedef gc<T> elem;
         typedef std::vector<elem> super;
 
         void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
@@ -184,14 +184,14 @@ namespace gc
         vector() {}
 
         template<typename T>
-        friend vector_ptr<ptr<T>> make_gc_vec();
+        friend gc_vector<T> make_gc_vec();
     };
     
     template<typename T>
-    vector_ptr<ptr<T>> make_gc_vec()
+    gc_vector<T> make_gc_vec()
     {
         using namespace details;
-        typedef vector<ptr<T>> C;
+        typedef vector<gc<T>> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         if (cls->state == ClassInfo::State::Unregistered) {
@@ -211,7 +211,7 @@ namespace gc
         }
         Meta* meta;
         auto obj = cls->createObj(meta);
-        return ptr<C>(new (obj)C(), meta);
+        return gc<C>(new (obj)C(), meta);
     }
 
     /// ============= Map ================
@@ -220,12 +220,12 @@ namespace gc
     struct map : public std::map<K, V> {};
 
     template<typename K, typename V>
-    using map_ptr = ptr<map<K, V>>;
+    using gc_map = gc<map<K, gc<V>>>;
 
     template<typename K, typename V>
-    struct map<K, ptr<V>> : public std::map<K, ptr<V>>
+    struct map<K, gc<V>> : public std::map<K, gc<V>>
     {
-        typedef ptr<V> elem;
+        typedef gc<V> elem;
         typedef std::map<K, elem> super;
         typedef typename super::value_type value_type;
 
@@ -236,14 +236,14 @@ namespace gc
         map() {}
 
         template<typename K, typename V>
-        friend map_ptr<K, ptr<V> > make_gc_map();
+        friend gc_map<K, V> make_gc_map();
     };
 
     template<typename K, typename V>
-    map_ptr<K, ptr<V>> make_gc_map()
+    gc_map<K, V> make_gc_map()
     {
         using namespace details;
-        typedef map<K, ptr<V>> C;
+        typedef map<K, gc<V>> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         if (cls->state == ClassInfo::State::Unregistered) {
@@ -263,7 +263,7 @@ namespace gc
         }
         Meta* meta;
         auto obj = cls->createObj(meta);        
-        return ptr<C>(new (obj)C(), meta);
+        return gc<C>(new (obj)C(), meta);
     }
 }
 

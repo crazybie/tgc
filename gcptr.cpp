@@ -3,7 +3,7 @@
 #include <set>
 #include <limits.h>
 
-namespace gc
+namespace slgc
 {
     using namespace details;
 
@@ -26,7 +26,7 @@ namespace gc
     };
 
 
-    struct GC
+    struct Impl
     {
         typedef std::set<Meta*, Meta::Less> MetaSet;
         enum class State { RootMarking, ChildMarking, Sweeping };
@@ -38,9 +38,9 @@ namespace gc
         MetaSet::iterator	    nextSweeping;
         State				    state;
 
-        GC() : state(State::RootMarking), nextRootMarking(0) {}
-        ~GC() { collect(INT_MAX); }
-        static GC* get() { static GC i; return &i; }
+        Impl() : state(State::RootMarking), nextRootMarking(0) {}
+        ~Impl() { collect(INT_MAX); }
+        static Impl* get() { static Impl i; return &i; }
 
         void onPtrChanged(PtrBase* p)
         {
@@ -82,7 +82,7 @@ namespace gc
             pointers.pop_back();
             // pointers列表变动会影响rootMarking
             if ( !pointer->meta ) return;
-            if ( state == GC::State::RootMarking ) {
+            if ( state == State::RootMarking ) {
                 if ( p->index < nextRootMarking ) {
                     markAsRoot(pointer);
                 }
@@ -151,7 +151,7 @@ namespace gc
         }
     };    
         
-    void gc_collect(int step) { return GC::get()->collect(step); }
+    void gc_collect(int step) { return Impl::get()->collect(step); }
 
     //////////////////////////////////////////////////////////////////////////
 
@@ -161,7 +161,7 @@ namespace gc
 
     Meta* findOwnerMeta(void* obj)
     {
-        auto& objs = GC::get()->metaSet;
+        auto& objs = Impl::get()->metaSet;
         DummyMetaInfo.objPtr = (char*)obj;
         auto i = objs.lower_bound(&DummyMetaInfo);
         DummyMetaInfo.objPtr = 0;
@@ -173,7 +173,7 @@ namespace gc
 
     void registerPtr(PtrBase* p)
     {
-        GC::get()->registerPtr(p);
+        Impl::get()->registerPtr(p);
         if ( ClassInfo::isCreatingObj ) {
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
@@ -185,8 +185,8 @@ namespace gc
 
     PtrBase::PtrBase() : meta(0), isRoot(1) { registerPtr(this); }
     PtrBase::PtrBase(void* obj) : isRoot(1) { registerPtr(this); meta = findOwnerMeta(obj); }
-    PtrBase::~PtrBase() { GC::get()->unregisterPtr(this); }
-    void PtrBase::onPtrChanged() { GC::get()->onPtrChanged(this); }
+    PtrBase::~PtrBase() { Impl::get()->unregisterPtr(this); }
+    void PtrBase::onPtrChanged() { Impl::get()->onPtrChanged(this); }
 
     void ClassInfo::registerSubPtr(Meta* owner, PtrBase* p)
     {
@@ -199,7 +199,7 @@ namespace gc
     {
         auto buf = alloc(this);
         meta = new Meta(this, buf);
-        GC::get()->metaSet.insert(meta);
+        Impl::get()->metaSet.insert(meta);
         return buf;
     }
 }
