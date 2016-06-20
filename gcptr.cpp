@@ -180,7 +180,7 @@ namespace slgc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->isRoot = 0;
+            p->setAsRoot(false);
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }

@@ -62,9 +62,9 @@ namespace slgc
         typedef gc<T> elem;
         typedef std::vector<elem> super;
 
-        void push_back(const elem& t) { super::push_back(t); back().isRoot = 0; }
-        void push_back(elem&& t) { super::push_back(std::move(t)); back().isRoot = 0; }
-        void resize(int sz) { super::resize(sz); for ( auto& i : *this ) i.isRoot = 0; }
+        void push_back(const elem& t) { super::push_back(t); back().setAsRoot(false); }
+        void push_back(elem&& t) { super::push_back(std::move(t)); back().setAsRoot(false); }  
+        void resize(int sz) { super::resize(sz); for ( auto& i : *this ) i.setAsRoot(false); }
 
     private:
         vector() {}
@@ -108,7 +108,7 @@ namespace slgc
     struct gc_map : public gc<map<K, gc<V>>>
     {
         using gc::gc;
-        gc<V>& operator[](const K& i) { auto& r = ( *p )[i]; r.isRoot = 0; return r; }
+        gc<V>& operator[](const K& i) { auto& r = ( *p )[i]; r.setAsRoot(false); return r; }
     };
 
     template<typename K, typename V>
@@ -118,7 +118,7 @@ namespace slgc
         typedef std::map<K, elem> super;
         typedef typename super::value_type value_type;
 
-        void insert(const value_type& v) { super::insert(v).first->second.isRoot = 0; }
+        void insert(const value_type& v) { super::insert(v).first->second.setAsRoot(false); }
 
     private:
         map() {}

@@ -4,6 +4,7 @@
 #include <set>
 #include <vector>
 #include <windows.h>
+#include <functional>
 
 #include <vld.h>
 
@@ -42,6 +43,12 @@ void _GC(int line)
 
 
 
+
+#define SELF \
+    static auto Self() -> std::remove_reference<decltype(*this)>::type; \
+    typedef decltype(Self()) self
+
+
 struct b1
 {
 	b1(const string& s) : name(s)
@@ -57,6 +64,7 @@ struct b1
 
 	string name;
 };
+
 
 struct b2
 {
@@ -297,12 +305,13 @@ gc<ArrayTest> a;
 void testArray()
 {    
     a = make_gc<ArrayTest>();
-    a->f();
+    a->f();    
 }
 
 
 int main()
 {    
+    b1 b("test");    
 #ifdef PROFILE
     for (int i = 0; i < 10; i++) 
 #endif

@@ -17,12 +17,13 @@
 namespace slgc
 {
     struct Meta;
+    struct Impl;
 
     namespace details
     {
         class PtrBase
         {
-        public:
+        protected:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
             Meta*           meta;
@@ -31,6 +32,11 @@ namespace slgc
             PtrBase(void* obj);
             ~PtrBase();
             void onPtrChanged();
+
+            friend struct Impl;
+
+        public:
+            void setAsRoot(bool v) { isRoot = v; }
         };
 
         struct ClassInfo
