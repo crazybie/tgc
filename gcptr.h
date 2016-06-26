@@ -1,7 +1,7 @@
 /*
-    A super fast incremental mark & sweep garbage collector.
+    A super lightweight incremental mark & sweep garbage collector.
 
-    Based on http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+    Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
     TODO:
     - exception safe.
@@ -36,40 +36,36 @@ namespace slgc
             friend struct Impl;
 
         public:
-            void setAsRoot(bool v) { isRoot = v; }
+            void setNonRoot() { isRoot = 0; }
         };
 
         struct ClassInfo
         {
-            class SubPtrEnumerator
+            class PtrEnumerator
             {
             public:
-                virtual ~SubPtrEnumerator() {}
+                virtual ~PtrEnumerator() {}
                 virtual bool hasNext() = 0;
                 virtual PtrBase* getNext() = 0;
+                void* operator new( size_t );
             };
 
-            enum class State : char { Unregistered, Registered };
-
-            typedef void(*Dctor)(ClassInfo* cls, void* obj);
+            enum class State : char { Unregistered, Registered };            
             typedef char* (*Alloc)(ClassInfo* cls);
-            typedef SubPtrEnumerator* (*EnumSubPtrs)(ClassInfo* cls, char*);
+            typedef void (*Dealloc)(ClassInfo* cls, void* obj);
+            typedef PtrEnumerator* (*EnumPtrs)(ClassInfo* cls, char*);
 
             Alloc               alloc;
-            Dctor               dctor;
-            EnumSubPtrs         enumSubPtrs;
+            Dealloc             dctor;
+            EnumPtrs            enumPtrs;
             size_t              size;
-            size_t              objCnt;
             std::vector<int>    memPtrOffsets;
             State               state;
-
             static bool			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo::ClassInfo(Alloc a, Dctor d, EnumSubPtrs enumSubPtrs_, int sz)
-                : alloc(a), dctor(d), enumSubPtrs(enumSubPtrs_), size(sz), state(State::Unregistered)
-            {
-            }
+            ClassInfo::ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
+                : alloc(a), dctor(d), enumPtrs(enumSubPtrs_), size(sz), state(State::Unregistered){}
             char* createObj(Meta*& meta);
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(Meta* owner, PtrBase* p);

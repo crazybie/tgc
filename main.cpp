@@ -26,40 +26,17 @@ using std::endl;
 #define PROFILE_LOOP for(int i=0;i<2;i++)
 #endif
 
-static int objcount = 0;
-static int gcobjcount = 0;
-
-#define GC() _GC(__LINE__)
-
-
-void _GC(int line)
-{
-    gc_collect(2);    
-#ifndef PROFILE
-    printf("---- GC at line %d ----\n", line);    
-    printf("Obj left:%d \n", objcount);
-#endif
-}
-
-
-
-
-#define SELF \
-    static auto Self() -> std::remove_reference<decltype(*this)>::type; \
-    typedef decltype(Self()) self
-
+void collect() { gc_collect(2); }
 
 struct b1
 {
 	b1(const string& s) : name(s)
 	{
 		cout << "Creating b1(" << name << ")." << endl;
-		objcount++;
 	}
 	virtual ~b1()
 	{
 		cout << "Destroying b1(" << name << ")." << endl;
-		objcount--;
 	}
 
 	string name;
@@ -71,12 +48,10 @@ struct b2
 	b2(const string& s) : name(s)
 	{
 		cout << "Creating b2(" << name << ")." << endl;
-		objcount++;
 	}
 	virtual ~b2()
 	{
 		cout << "Destroying b2(" << name << ")." << endl;
-        objcount--;
 	}
 
 	string name;
@@ -87,12 +62,10 @@ struct d1 : public b1
 	d1(const string& s) : b1(s)
 	{
 		cout << "Creating d1(" << name << ")." << endl;
-		objcount++;
 	}
 	virtual ~d1()
 	{
 		cout << "Destroying d1(" << name << ")." << endl;
-		objcount--;
 	}
 };
 
@@ -101,12 +74,10 @@ struct d2 : public b1, public b2
 	d2(const string& s) : b1(s), b2(s)
 	{
 		cout << "Creating d2(" << b1::name << ")." << endl;
-		objcount++;
 	}
 	virtual ~d2()
 	{
 		cout << "Destroying d2(" << b1::name << ")." << endl;
-		objcount--;
 	}
 };
 
@@ -117,13 +88,11 @@ struct rc
     int  a = 11;
 	rc()
 	{
-		objcount++;        
-		GC();
+		collect();
 	}
 	~rc()
 	{
         auto i = gc_from(this);
-        objcount--;
 	}
 };
 
@@ -161,17 +130,16 @@ void test()
             //		p1 = &p3->name;
             gc<b1> p4(make_gc<d2>("second"));
             gc<b2> pz(dynamic_cast<b2*>(&*p4));
-            if (static_cast<void*>(p4.operator ->()) == static_cast<void*>(pz.operator ->()))
+            if ((void*)&*p4 == (void*)&*pz)
                 throw std::runtime_error("unexpected");
 
 
             p3 = p2;
 
-            GC();
-
+            collect();
         }
     }
-	GC();
+	collect();
 }
 
 struct circ
@@ -179,12 +147,10 @@ struct circ
     circ(const string& s) : name(s)
     {
         cout << "Creating circ(" << name << ")." << endl;
-        objcount++;
     }
     ~circ()
     {
         cout << "Destroying circ(" << name << ")." << endl;
-        objcount--;
     }
 
     gc<circ> ptr;
@@ -205,10 +171,10 @@ void testCirc()
             p6->ptr = p7;
             p7->ptr = p6;
 
-            GC();
+            collect();
         }
     }
-    GC();
+    collect();
 }
 
 void testMoveCtor()
@@ -316,15 +282,11 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-         testInsert();
-         testEmpty();
-         test();
-         testMoveCtor();
-         testCirc();
+        testInsert();
+        testEmpty();
+        test();
+        testMoveCtor();
+        testCirc();
         testArray();
     }
-#undef cout    
-    gc_collect(10);
-    cout << (!objcount ? "ok" : "failed") << endl;
-    return objcount;
 }

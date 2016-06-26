@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "gcptr.h"
 #include <set>
 #include <limits.h>
@@ -112,15 +111,15 @@ namespace slgc
                     Meta* info = grayObjs.back();
                     grayObjs.pop_back();
                     info->color = Meta::Black;
-                    auto cls = info->clsInfo;
-                    auto iter = cls->enumSubPtrs(cls, info->objPtr);
+
+                    auto cls = info->clsInfo;                    
+                    auto iter = cls->enumPtrs(cls, info->objPtr);
                     for (; iter->hasNext(); stepCnt--) {
                         auto* meta = iter->getNext()->meta;
                         if ( meta->color == Meta::White ) {
                             grayObjs.push_back(meta);
                         }
-                    }
-                    delete iter;
+                    }                    
                 }
                 if ( !grayObjs.size() ) {
                     state = State::Sweeping;
@@ -180,7 +179,7 @@ namespace slgc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->setAsRoot(false);
+            p->setNonRoot();
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }
@@ -205,5 +204,10 @@ namespace slgc
         return buf;
     }
 
+    void* ClassInfo::PtrEnumerator::operator new( size_t sz)
+    {
+        static char buf[255];
+        return sz < sizeof(buf) ? buf : nullptr;
+    }
 
 }
