@@ -33,10 +33,10 @@ namespace slgc
             ~PtrBase();
             void onPtrChanged();
 
-            friend struct Impl;
+            friend struct slgc::Impl;
 
         public:
-            void setNonRoot() { isRoot = 0; }
+            void setAsLeaf() { isRoot = 0; }
         };
 
         struct ClassInfo
@@ -64,7 +64,7 @@ namespace slgc
             static bool			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo::ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
+            ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
                 : alloc(a), dctor(d), enumPtrs(enumSubPtrs_), size(sz), state(State::Unregistered){}
             char* createObj(Meta*& meta);
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
@@ -79,6 +79,9 @@ namespace slgc
     template <typename T>
     class gc : public details::PtrBase
     {
+    public:
+        typedef T pointee;
+
     public:
         // Constructors
 
@@ -123,10 +126,10 @@ namespace slgc
         T*  p;
     };
 
+    void gc_collect(int steps);
+    
     template<typename T>
     gc<T> gc_from(T* t) { return gc<T>(t); }
-
-    void gc_collect(int step);
 
     template<typename T, typename... Args>
     gc<T> make_gc(Args&&... args);

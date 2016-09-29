@@ -150,7 +150,7 @@ namespace slgc
         }
     };    
         
-    void gc_collect(int step) { return Impl::get()->collect(step); }
+    void gc_collect(int steps) { return Impl::get()->collect(steps); }
 
 
 
@@ -179,7 +179,7 @@ namespace slgc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->setNonRoot();
+            p->setAsLeaf();
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }

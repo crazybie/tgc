@@ -1,6 +1,76 @@
 #pragma once
 #include <map>
 
+
+
+namespace std
+{
+    template<typename T>
+    class SimpleAllocator
+    {
+    public:
+        typedef size_t      size_type;
+        typedef ptrdiff_t   difference_type;
+        typedef T*          pointer;
+        typedef const T*    const_pointer;
+        typedef T&          reference;
+        typedef const T&    const_reference;
+        typedef T           value_type;
+
+        template<typename U>
+        struct rebind
+        {
+            typedef allocator<U> other;
+        };
+
+        pointer allocate(size_t n) { return reinterpret_cast<pointer>( ::operator new( sizeof(value_type) * n ) ); }
+        pointer address(reference __x) const { return &__x; }
+        const_pointer address(const_reference x) const { return &x; }
+        void deallocate(pointer p, size_type n) { ::operator delete( p ); }
+        size_type max_size() const throw( ) { return std::numeric_limits<size_type>::max(); }
+        void destroy(pointer p) { p->~value_type(); }
+        void construct(pointer p, value_type&& v) { ::new( p ) value_type(std::move(v)); }
+    };
+
+    template<typename T>
+    class allocator< slgc::gc<T> > : public SimpleAllocator<slgc::gc<T>>
+    {
+    public:
+        void construct(pointer p, value_type&& v)
+        {
+            auto r = ::new( p ) value_type(std::move(v));
+            r->setAsLeaf();
+        }
+    };
+
+    template<typename K, typename T>
+    using map_node = typename _Tree_node<pair<K, T>, typename allocator<T>::pointer>;
+
+    template<typename T>
+    class Allocator : public SimpleAllocator<T>{};
+
+    template<typename K, typename T>
+    class Allocator<pair<const K, slgc::gc<T> >> : public SimpleAllocator<pair<const K, slgc::gc<T>>>
+    {        
+    public:  
+        template<typename U>
+        struct rebind
+        {
+            typedef Allocator<U> other;
+        };
+
+        Allocator()
+        {
+
+        }
+        void construct(pointer p, value_type&& v)
+        {
+            auto r = ::new( p ) value_type(std::move(v));
+            r._Myval.second->setAsLeaf();
+        }
+    };
+}
+
 namespace slgc
 {
     template<typename T>
@@ -46,96 +116,49 @@ namespace slgc
         C* o;
         typename C::iterator it;
         ContainerPtrEnumerator(char* o_) :o((C*)o_) { it = o->begin(); }
-        bool hasNext() override { return it != o->end(); }        
+        bool hasNext() override { return it != o->end(); }
     };
+
 
     /// ============= Vector ================
 
     template<typename T>
-    struct vector : public std::vector<T> {};
+    using gc_vector = gc<std::vector<gc<T>>>;
 
-    template<typename T>
-    struct gc_vector : public gc<vector<gc<T>>>
-    {
-        using super = gc<vector<gc<T>>>;
-        using gc::gc;
-
-        const gc<T>& operator[](int i) const { return ( *p )[i]; }
-        gc<T>& operator[](int i) { return ( *p )[i]; }
-    };
-
-    template<typename T>
-    struct vector<gc<T>> : public std::vector<gc<T>>
-    {
-        typedef gc<T> elem;
-        typedef std::vector<elem> super;
-
-        void push_back(const elem& t) { super::push_back(t); back().setNonRoot(); }
-        void push_back(elem&& t) { super::push_back(std::move(t)); back().setNonRoot(); }
-        void resize(int sz) { super::resize(sz); for ( auto& i : *this ) i.setNonRoot(); }
-        // TODO: other insert functions        
-
-    private:
-        vector() {}
-
-        template<typename T>
-        friend gc_vector<T> make_gc_vec();
-    };
-
+    
     template<typename T>
     gc_vector<T> make_gc_vec()
     {
         using namespace details;
-        typedef vector<gc<T>> C;
+        typedef typename gc_vector<T>::pointee C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         cls->enumPtrs = [](ClassInfo* cls, char* o) {
             struct E : ContainerPtrEnumerator<C>
             {
-                using ContainerPtrEnumerator::ContainerPtrEnumerator;
+                using ContainerPtrEnumerator<C>::ContainerPtrEnumerator;
                 PtrBase* getNext() { return &*it++; }
             };
             return ( ClassInfo::PtrEnumerator* ) new E(o);
         };
         Meta* meta;
-        auto obj = cls->createObj(meta);
+        auto obj = cls->createObj(meta);        
         return{ new ( obj )C(), meta };
     }
 
     /// ============= Map ================
-
+    
     template<typename K, typename V>
-    struct map : public std::map<K, V> {};
-
-    template<typename K, typename V>
-    struct gc_map : public gc<map<K, gc<V>>>
-    {
-        using gc::gc;
-        gc<V>& operator[](const K& i) { auto& r = ( *p )[i]; r.setNonRoot(); return r; }
-    };
-
-    template<typename K, typename V>
-    struct map<K, gc<V>> : public std::map<K, gc<V>>
-    {
-        typedef gc<V> elem;
-        typedef std::map<K, elem> super;
-        typedef typename super::value_type value_type;
-
-        void insert(const value_type& v) { super::insert(v).first->second.setNonRoot(); }
-        // TODO: other insert functions
-
-    private:
-        map() {}
-
-        template<typename K, typename V>
-        friend gc_map<K, V> make_gc_map();
-    };
+    using gc_map = gc<std::map<K, gc<V>>>;
 
     template<typename K, typename V>
     gc_map<K, V> make_gc_map()
     {
-        using namespace details;
-        typedef map<K, gc<V>> C;
+        using namespace details;        
+        using namespace std;        
+
+        //typedef typename gc_map<K, V, less<K>, allocator<pair<const K,V>>>::pointee C;
+        typedef map<K, gc<V>, less<K>, Allocator<pair<const K, gc<V>>>> C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         cls->enumPtrs = [](ClassInfo* cls, char* o) {
@@ -148,7 +171,7 @@ namespace slgc
         };
         Meta* meta;
         auto obj = cls->createObj(meta);
-        return { new ( obj )C(), meta };
+        return{ new ( obj )C(), meta };
     }
 }
 
