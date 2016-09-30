@@ -102,12 +102,11 @@ namespace slgc
 
         ClassInfo* cls = ClassInfo::get<T>();
         cls->isCreatingObj = true;
-        Meta* meta;
-        char* buf = cls->createObj(meta);
-        T* obj = new ( buf )T(std::forward<Args>(args)...);
+        Meta* meta = cls->createObj();
+        T* obj = new ( meta->objPtr )T(std::forward<Args>(args)...);
         cls->state = ClassInfo::State::Registered;
         cls->isCreatingObj = false;
-        return{ obj, meta };
+        return{ meta };
     }
 
     template<typename C>
@@ -141,9 +140,9 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* ) new E(o);
         };
-        Meta* meta;
-        auto obj = cls->createObj(meta);        
-        return{ new ( obj )C(), meta };
+        Meta* meta = cls->createObj();
+        new ( meta->objPtr )C();
+        return{ meta };
     }
 
     /// ============= Map ================
@@ -154,11 +153,8 @@ namespace slgc
     template<typename K, typename V>
     gc_map<K, V> make_gc_map()
     {
-        using namespace details;        
-        using namespace std;        
-
-        //typedef typename gc_map<K, V, less<K>, allocator<pair<const K,V>>>::pointee C;
-        typedef map<K, gc<V>, less<K>, Allocator<pair<const K, gc<V>>>> C;
+        using namespace details;                
+        typedef typename gc_map<K, V>::pointee C;
 
         ClassInfo* cls = ClassInfo::get<C>();
         cls->enumPtrs = [](ClassInfo* cls, char* o) {
@@ -169,9 +165,9 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* )new E(o);
         };
-        Meta* meta;
-        auto obj = cls->createObj(meta);
-        return{ new ( obj )C(), meta };
+        Meta* meta = cls->createObj();
+        new ( meta->objPtr )C();
+        return { meta };
     }
 }
 

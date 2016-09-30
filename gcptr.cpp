@@ -6,23 +6,6 @@ namespace slgc
 {
     using namespace details;
 
-    struct Meta
-    {
-        enum MarkColor : char { White, Gray, Black };
-
-        ClassInfo*  clsInfo;
-        char*       objPtr;
-        MarkColor   color;
-
-        struct Less
-        {
-            bool operator()(Meta* x, Meta* y)const { return *x < *y; }
-        };
-
-        explicit Meta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
-        ~Meta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
-        bool operator<(Meta& r) { return objPtr + clsInfo->size <= r.objPtr; }
-    };
 
 
     struct Impl
@@ -196,12 +179,12 @@ namespace slgc
         memPtrOffsets.push_back(offset);
     }
 
-    char* ClassInfo::createObj(Meta*& meta)
+    Meta* ClassInfo::createObj()
     {
         auto buf = alloc(this);
-        meta = new Meta(this, buf);
+        auto meta = new Meta(this, buf);
         Impl::get()->metaSet.insert(meta);
-        return buf;
+        return meta;
     }
 
     void* ClassInfo::PtrEnumerator::operator new( size_t sz)

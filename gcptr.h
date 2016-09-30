@@ -16,13 +16,15 @@
 
 namespace slgc
 {
-    struct Meta;
     struct Impl;
 
     namespace details
     {
+        struct Meta;
+        
         class PtrBase
         {
+            friend struct slgc::Impl;
         protected:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
@@ -32,9 +34,6 @@ namespace slgc
             PtrBase(void* obj);
             ~PtrBase();
             void onPtrChanged();
-
-            friend struct slgc::Impl;
-
         public:
             void setAsLeaf() { isRoot = 0; }
         };
@@ -66,12 +65,31 @@ namespace slgc
 
             ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
                 : alloc(a), dctor(d), enumPtrs(enumSubPtrs_), size(sz), state(State::Unregistered){}
-            char* createObj(Meta*& meta);
+            Meta* createObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(Meta* owner, PtrBase* p);
 
             template<typename T>
             static ClassInfo* get();
+        };
+
+
+        struct Meta
+        {
+            enum MarkColor : char { White, Gray, Black };
+
+            ClassInfo*  clsInfo;
+            char*       objPtr;
+            MarkColor   color;
+
+            struct Less
+            {
+                bool operator()(Meta* x, Meta* y)const { return *x < *y; }
+            };
+
+            explicit Meta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
+            ~Meta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
+            bool operator<(Meta& r) const { return objPtr + clsInfo->size <= r.objPtr; }
         };
     };
 
@@ -81,12 +99,13 @@ namespace slgc
     {
     public:
         typedef T pointee;
+        template<typename U> friend class gc;
 
     public:
         // Constructors
 
-        gc() : p(0) {}
-        gc(T* obj, Meta* info) { reset(obj, info); }
+        gc() : p(nullptr) {}
+        gc(details::Meta* info) { reset((T*)info->objPtr, info); }
         explicit gc(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
         gc(const gc<U>& r) { reset(r.p, r.meta); }
@@ -110,19 +129,16 @@ namespace slgc
         // Methods
 
         void reset(T* o) { gc(o).swap(*this); }
-        void reset(T* o, Meta* n) { p = o; meta = n; onPtrChanged(); }
+        void reset(T* o, details::Meta* n) { p = o; meta = n; onPtrChanged(); }
         void swap(gc& r)
         {
             T* temp = p;
-            Meta* tinfo = meta;
+            auto* tinfo = meta;
             reset(r.p, r.meta);
             r.reset(temp, tinfo);
         }
 
-    protected:
-        template<typename U>
-        friend class gc;
-
+    protected:        
         T*  p;
     };
 
