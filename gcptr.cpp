@@ -6,15 +6,13 @@ namespace slgc
 {
     using namespace details;
 
-
-
     struct Impl
     {
-        typedef std::set<Meta*, Meta::Less> MetaSet;
+        typedef std::set<ObjMeta*, ObjMeta::Less> MetaSet;
         enum class State { RootMarking, ChildMarking, Sweeping };
 
         std::vector<PtrBase*>   pointers;
-        std::vector<Meta*>      grayObjs;
+        std::vector<ObjMeta*>   grayObjs;
         MetaSet				    metaSet;
         size_t				    nextRootMarking;
         MetaSet::iterator	    nextSweeping;
@@ -31,12 +29,12 @@ namespace slgc
             case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
             case State::ChildMarking:	markAsRoot(p); break;
             case State::Sweeping:
-                if ( p->meta->color == Meta::White ) {
+                if ( p->meta->markState == ObjMeta::Unmarked ) {
                     if ( *p->meta < **nextSweeping ) {
                         // already white and ready for the next rootMarking.
                     } else {
                         // mark it alive to bypass sweeping.
-                        p->meta->color = Meta::Black;
+                        p->meta->markState = ObjMeta::Alive;
                     }
                 }
                 break;
@@ -45,8 +43,8 @@ namespace slgc
         void markAsRoot(PtrBase* p)
         {
             if ( p->isRoot == 1 ) {
-                if ( p->meta->color == Meta::White ) {
-                    p->meta->color = Meta::Gray;
+                if ( p->meta->markState == ObjMeta::Unmarked ) {
+                    p->meta->markState = ObjMeta::Gray;
                     grayObjs.push_back(p->meta);
                 }
             }
@@ -62,7 +60,7 @@ namespace slgc
             auto* pointer = pointers[p->index];
             pointer->index = p->index;
             pointers.pop_back();
-            // pointers列表变动会影响rootMarking
+            // changing of pointers may affect the rootMarking
             if ( !pointer->meta ) return;
             if ( state == State::RootMarking ) {
                 if ( p->index < nextRootMarking ) {
@@ -91,15 +89,18 @@ namespace slgc
             _ChildMarking:
             case State::ChildMarking:
                 while ( grayObjs.size() && stepCnt-- >0 ) {
-                    Meta* info = grayObjs.back();
+                    ObjMeta* o = grayObjs.back();
                     grayObjs.pop_back();
-                    info->color = Meta::Black;
+                    o->markState = ObjMeta::Alive;
 
-                    auto cls = info->clsInfo;                    
-                    auto iter = cls->enumPtrs(cls, info->objPtr);
+                    auto cls = o->clsInfo;
+                    auto iter = cls->enumPtrs(cls, o->objPtr);
                     for (; iter->hasNext(); stepCnt--) {
-                        auto* meta = iter->getNext()->meta;
-                        if ( meta->color == Meta::White ) {
+                        auto* ptr = iter->getNext();
+                        // pointers in STL containers are originally treated as root pointers, so corrected here.
+                        ptr->setAsLeaf(); 
+                        auto* meta = ptr->meta;
+                        if ( meta->markState == ObjMeta::Unmarked ) {
                             grayObjs.push_back(meta);
                         }
                     }                    
@@ -114,13 +115,13 @@ namespace slgc
             _Sweeping:
             case State::Sweeping:
                 for ( ; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
-                    Meta* meta = *nextSweeping;
-                    if ( meta->color == Meta::White ) {
+                    ObjMeta* meta = *nextSweeping;
+                    if ( meta->markState == ObjMeta::Unmarked ) {
                         delete meta;
                         nextSweeping = metaSet.erase(nextSweeping);
                         continue;
                     }
-                    meta->color = Meta::White;
+                    meta->markState = ObjMeta::Unmarked;
                     ++nextSweeping;
                 }
                 if ( nextSweeping == metaSet.end() ) {
@@ -141,9 +142,9 @@ namespace slgc
 
     bool ClassInfo::isCreatingObj = false;
     ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
-    Meta DummyMetaInfo(&ClassInfo::Empty, nullptr);
+    ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
-    Meta* findOwnerMeta(void* obj)
+    ObjMeta* findOwnerMeta(void* obj)
     {
         auto& objs = Impl::get()->metaSet;
         DummyMetaInfo.objPtr = (char*)obj;
@@ -162,7 +163,7 @@ namespace slgc
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;
-            p->setAsLeaf();
+            p->setAsLeaf(); // we know it is leaf before tracing.
             owner->clsInfo->registerSubPtr(owner, p);
         }
     }
@@ -172,17 +173,17 @@ namespace slgc
     PtrBase::~PtrBase() { Impl::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { Impl::get()->onPtrChanged(this); }
 
-    void ClassInfo::registerSubPtr(Meta* owner, PtrBase* p)
+    void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p)
     {
         if ( state == ClassInfo::State::Registered ) return;
         auto offset = (char*)p - (char*)owner->objPtr;
         memPtrOffsets.push_back(offset);
     }
 
-    Meta* ClassInfo::createObj()
+    ObjMeta* ClassInfo::allocObj()
     {
         auto buf = alloc(this);
-        auto meta = new Meta(this, buf);
+        auto meta = new ObjMeta(this, buf);
         Impl::get()->metaSet.insert(meta);
         return meta;
     }

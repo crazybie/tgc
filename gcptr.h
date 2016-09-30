@@ -20,7 +20,7 @@ namespace slgc
 
     namespace details
     {
-        struct Meta;
+        struct ObjMeta;
         
         class PtrBase
         {
@@ -28,7 +28,7 @@ namespace slgc
         protected:
             unsigned int    isRoot : 1;
             unsigned int    index : 31;
-            Meta*           meta;
+            ObjMeta*           meta;
 
             PtrBase();
             PtrBase(void* obj);
@@ -65,31 +65,32 @@ namespace slgc
 
             ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
                 : alloc(a), dctor(d), enumPtrs(enumSubPtrs_), size(sz), state(State::Unregistered){}
-            Meta* createObj();
+            ObjMeta* allocObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
-            void registerSubPtr(Meta* owner, PtrBase* p);
+            void registerSubPtr(ObjMeta* owner, PtrBase* p);
 
             template<typename T>
             static ClassInfo* get();
+
         };
 
 
-        struct Meta
-        {
-            enum MarkColor : char { White, Gray, Black };
+        struct ObjMeta
+        {            
+            enum MarkColor : char { Unmarked,  Gray, Alive };
 
             ClassInfo*  clsInfo;
             char*       objPtr;
-            MarkColor   color;
+            MarkColor   markState;
 
             struct Less
             {
-                bool operator()(Meta* x, Meta* y)const { return *x < *y; }
+                bool operator()(ObjMeta* x, ObjMeta* y)const { return *x < *y; }
             };
 
-            explicit Meta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), color(MarkColor::White) {}
-            ~Meta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
-            bool operator<(Meta& r) const { return objPtr + clsInfo->size <= r.objPtr; }
+            explicit ObjMeta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), markState(MarkColor::Unmarked) {}
+            ~ObjMeta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
+            bool operator<(ObjMeta& r) const { return objPtr + clsInfo->size <= r.objPtr; }
         };
     };
 
@@ -105,7 +106,7 @@ namespace slgc
         // Constructors
 
         gc() : p(nullptr) {}
-        gc(details::Meta* info) { reset((T*)info->objPtr, info); }
+        explicit gc(details::ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
         explicit gc(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
         gc(const gc<U>& r) { reset(r.p, r.meta); }
@@ -129,13 +130,13 @@ namespace slgc
         // Methods
 
         void reset(T* o) { gc(o).swap(*this); }
-        void reset(T* o, details::Meta* n) { p = o; meta = n; onPtrChanged(); }
+        void reset(T* o, details::ObjMeta* n) { p = o; meta = n; onPtrChanged(); }
         void swap(gc& r)
         {
-            T* temp = p;
-            auto* tinfo = meta;
+            auto* temp = p;
+            auto* tempMeta = meta;
             reset(r.p, r.meta);
-            r.reset(temp, tinfo);
+            r.reset(temp, tempMeta);
         }
 
     protected:        

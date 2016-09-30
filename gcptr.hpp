@@ -1,76 +1,6 @@
 #pragma once
 #include <map>
 
-
-
-namespace std
-{
-    template<typename T>
-    class SimpleAllocator
-    {
-    public:
-        typedef size_t      size_type;
-        typedef ptrdiff_t   difference_type;
-        typedef T*          pointer;
-        typedef const T*    const_pointer;
-        typedef T&          reference;
-        typedef const T&    const_reference;
-        typedef T           value_type;
-
-        template<typename U>
-        struct rebind
-        {
-            typedef allocator<U> other;
-        };
-
-        pointer allocate(size_t n) { return reinterpret_cast<pointer>( ::operator new( sizeof(value_type) * n ) ); }
-        pointer address(reference __x) const { return &__x; }
-        const_pointer address(const_reference x) const { return &x; }
-        void deallocate(pointer p, size_type n) { ::operator delete( p ); }
-        size_type max_size() const throw( ) { return std::numeric_limits<size_type>::max(); }
-        void destroy(pointer p) { p->~value_type(); }
-        void construct(pointer p, value_type&& v) { ::new( p ) value_type(std::move(v)); }
-    };
-
-    template<typename T>
-    class allocator< slgc::gc<T> > : public SimpleAllocator<slgc::gc<T>>
-    {
-    public:
-        void construct(pointer p, value_type&& v)
-        {
-            auto r = ::new( p ) value_type(std::move(v));
-            r->setAsLeaf();
-        }
-    };
-
-    template<typename K, typename T>
-    using map_node = typename _Tree_node<pair<K, T>, typename allocator<T>::pointer>;
-
-    template<typename T>
-    class Allocator : public SimpleAllocator<T>{};
-
-    template<typename K, typename T>
-    class Allocator<pair<const K, slgc::gc<T> >> : public SimpleAllocator<pair<const K, slgc::gc<T>>>
-    {        
-    public:  
-        template<typename U>
-        struct rebind
-        {
-            typedef Allocator<U> other;
-        };
-
-        Allocator()
-        {
-
-        }
-        void construct(pointer p, value_type&& v)
-        {
-            auto r = ::new( p ) value_type(std::move(v));
-            r._Myval.second->setAsLeaf();
-        }
-    };
-}
-
 namespace slgc
 {
     template<typename T>
@@ -95,18 +25,25 @@ namespace slgc
         return &i;
     }
 
+
+    template<typename T, typename... Args>
+    gc<T> createObj(details::ClassInfo* cls, Args&&... args)
+    {
+        using namespace details;
+        cls->isCreatingObj = true;
+        auto* meta = cls->allocObj();
+        new ( meta->objPtr ) T(std::forward<Args>(args)...);
+        cls->state = ClassInfo::State::Registered;
+        cls->isCreatingObj = false;
+        return gc<T>(meta);
+    }
+
     template<typename T, typename... Args>
     gc<T> make_gc(Args&&... args)
     {
         using namespace details;
-
         ClassInfo* cls = ClassInfo::get<T>();
-        cls->isCreatingObj = true;
-        Meta* meta = cls->createObj();
-        T* obj = new ( meta->objPtr )T(std::forward<Args>(args)...);
-        cls->state = ClassInfo::State::Registered;
-        cls->isCreatingObj = false;
-        return{ meta };
+        return createObj<T>(cls, std::forward<Args>(args)...);
     }
 
     template<typename C>
@@ -140,9 +77,7 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* ) new E(o);
         };
-        Meta* meta = cls->createObj();
-        new ( meta->objPtr )C();
-        return{ meta };
+        return createObj<C>(cls);
     }
 
     /// ============= Map ================
@@ -153,7 +88,7 @@ namespace slgc
     template<typename K, typename V>
     gc_map<K, V> make_gc_map()
     {
-        using namespace details;                
+        using namespace details;
         typedef typename gc_map<K, V>::pointee C;
 
         ClassInfo* cls = ClassInfo::get<C>();
@@ -165,9 +100,7 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* )new E(o);
         };
-        Meta* meta = cls->createObj();
-        new ( meta->objPtr )C();
-        return { meta };
+        return createObj<C>(cls);
     }
 }
 
