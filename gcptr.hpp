@@ -3,13 +3,46 @@
 
 namespace slgc
 {
-    template<typename T>
-    details::ClassInfo* details::ClassInfo::get()
+    namespace details
     {
-        auto alloc = [](ClassInfo* cls) { return new char[sizeof(T)]; };
-        auto destroy = [](ClassInfo* cls, void* obj) { ( (T*)obj )->~T(); delete[](char*)obj; };
-        auto enumSubPtrs = [](ClassInfo* cls, char* o) ->PtrEnumerator* {
-            struct E : details::ClassInfo::PtrEnumerator
+        template<typename T>
+        ClassInfo* ClassInfo::get()
+        {
+            auto alloc = [](ClassInfo* cls) { return new char[sizeof(T)]; };
+            auto destroy = [](ClassInfo* cls, void* obj) { ( (T*)obj )->~T(); delete[](char*)obj; };            
+            static ClassInfo i{ alloc, destroy, sizeof(T) };
+            return &i;
+        }
+        
+        template<typename T, typename... Args>
+        ObjMeta* createObj(ClassInfo* cls, Args&&... args)
+        {
+            cls->isCreatingObj = true;
+            auto* meta = cls->allocObj();
+            new ( meta->objPtr ) T(std::forward<Args>(args)...);
+            cls->state = ClassInfo::State::Registered;
+            cls->isCreatingObj = false;
+            return meta;
+        }
+
+        template<typename C>
+        struct ContainerPtrEnumerator : ClassInfo::PtrEnumerator
+        {
+            C* o;
+            typename C::iterator it;
+            ContainerPtrEnumerator(char* o_) :o((C*)o_) { it = o->begin(); }
+            bool hasNext() override { return it != o->end(); }
+        };
+    }
+    
+
+    template<typename T, typename... Args>
+    gc<T> make_gc(Args&&... args)
+    {
+        using namespace details;
+        ClassInfo* cls = ClassInfo::get<T>();
+        cls->enumPtrs = [](ClassInfo* cls, char* o) {
+            struct E : ClassInfo::PtrEnumerator
             {
                 size_t i;
                 ClassInfo* cls;
@@ -18,52 +51,23 @@ namespace slgc
                 bool hasNext() { return i < cls->memPtrOffsets.size(); }
                 PtrBase* getNext() { return (PtrBase*)( o + cls->memPtrOffsets[i++] ); }
             };
-            return new E{ cls, o };
+            return ( ClassInfo::PtrEnumerator* )new E{ cls, o };
         };
-
-        static ClassInfo i{ alloc, destroy, enumSubPtrs, sizeof(T) };
-        return &i;
-    }
-
-
-    template<typename T, typename... Args>
-    gc<T> createObj(details::ClassInfo* cls, Args&&... args)
-    {
-        using namespace details;
-        cls->isCreatingObj = true;
-        auto* meta = cls->allocObj();
-        new ( meta->objPtr ) T(std::forward<Args>(args)...);
-        cls->state = ClassInfo::State::Registered;
-        cls->isCreatingObj = false;
-        return gc<T>(meta);
-    }
-
-    template<typename T, typename... Args>
-    gc<T> make_gc(Args&&... args)
-    {
-        using namespace details;
-        ClassInfo* cls = ClassInfo::get<T>();
         return createObj<T>(cls, std::forward<Args>(args)...);
     }
-
-    template<typename C>
-    struct ContainerPtrEnumerator : details::ClassInfo::PtrEnumerator
-    {
-        C* o;
-        typename C::iterator it;
-        ContainerPtrEnumerator(char* o_) :o((C*)o_) { it = o->begin(); }
-        bool hasNext() override { return it != o->end(); }
-    };
-
 
     /// ============= Vector ================
 
     template<typename T>
-    using gc_vector = gc<std::vector<gc<T>>>;
+    struct gc_vector : gc<std::vector<gc<T>>>
+    {
+        using gc::gc;
+        gc<T>& operator[](int idx) { return ( *p )[idx]; }
+    };
 
     
-    template<typename T>
-    gc_vector<T> make_gc_vec()
+    template<typename T, typename... Args>
+    gc_vector<T> make_gc_vec(Args&&... args)
     {
         using namespace details;
         typedef typename gc_vector<T>::pointee C;
@@ -77,16 +81,20 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* ) new E(o);
         };
-        return createObj<C>(cls);
+        return createObj<C>(cls, std::forward<Args>(args)...);
     }
 
     /// ============= Map ================
     
     template<typename K, typename V>
-    using gc_map = gc<std::map<K, gc<V>>>;
+    struct gc_map : gc<std::map<K, gc<V>>>
+    {
+        using gc::gc;
+        gc<V>& operator[](const K& k) { return ( *p )[k]; }
+    };
 
-    template<typename K, typename V>
-    gc_map<K, V> make_gc_map()
+    template<typename K, typename V, typename... Args>
+    gc_map<K, V> make_gc_map(Args&&... args)
     {
         using namespace details;
         typedef typename gc_map<K, V>::pointee C;
@@ -100,7 +108,7 @@ namespace slgc
             };
             return ( ClassInfo::PtrEnumerator* )new E(o);
         };
-        return createObj<C>(cls);
+        return createObj<C>(cls, std::forward<Args>(args)...);
     }
 }
 

@@ -5,6 +5,7 @@
 #include <vector>
 #include <windows.h>
 #include <functional>
+#include <assert.h>
 
 #include <vld.h>
 
@@ -26,7 +27,7 @@ using std::endl;
 #define PROFILE_LOOP for(int i=0;i<2;i++)
 #endif
 
-void collect() { gc_collect(2); }
+void collect(int steps=2) { gc_collect(steps); }
 
 struct b1
 {
@@ -275,6 +276,24 @@ void testArray()
 }
 
 
+
+void testCircledContainer()
+{
+    static bool ok = false;
+    struct Node
+    {
+        gc_map<int, Node> childs = make_gc_map<int,Node>();
+        ~Node() { ok = true; }
+    };
+    {
+        auto& node = make_gc<Node>();
+        node->childs[1] = node;
+    }    
+    collect(1000);
+    //assert(ok);
+}
+
+
 int main()
 {    
     b1 b("test");    
@@ -282,6 +301,7 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
+        testCircledContainer();
         testInsert();
         testEmpty();
         test();

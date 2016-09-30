@@ -63,15 +63,14 @@ namespace slgc
             static bool			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo(Alloc a, Dealloc d, EnumPtrs enumSubPtrs_, int sz)
-                : alloc(a), dctor(d), enumPtrs(enumSubPtrs_), size(sz), state(State::Unregistered){}
+            ClassInfo(Alloc a, Dealloc d, int sz)
+                : alloc(a), dctor(d), size(sz), state(State::Unregistered){}
             ObjMeta* allocObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(ObjMeta* owner, PtrBase* p);
 
             template<typename T>
             static ClassInfo* get();
-
         };
 
 
@@ -106,7 +105,7 @@ namespace slgc
         // Constructors
 
         gc() : p(nullptr) {}
-        explicit gc(details::ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
+        gc(details::ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
         explicit gc(T* obj) : PtrBase(obj), p(obj) {}
         template <typename U>
         gc(const gc<U>& r) { reset(r.p, r.meta); }

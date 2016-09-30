@@ -141,7 +141,7 @@ namespace slgc
     //////////////////////////////////////////////////////////////////////////
 
     bool ClassInfo::isCreatingObj = false;
-    ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
+    ClassInfo ClassInfo::Empty{ 0, 0, 0};
     ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
     ObjMeta* findOwnerMeta(void* obj)
