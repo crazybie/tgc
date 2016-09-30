@@ -117,6 +117,11 @@ namespace slgc
                 for ( ; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
                     ObjMeta* meta = *nextSweeping;
                     if ( meta->markState == ObjMeta::Unmarked ) {
+                        // in case a container is recycled before we correct the sub pointers in ChildMaking phase.
+                        for ( auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr); i->hasNext(); ) {
+                            auto* subptr = i->getNext();
+                            subptr->setAsLeaf();
+                        }
                         delete meta;
                         nextSweeping = metaSet.erase(nextSweeping);
                         continue;
@@ -140,7 +145,7 @@ namespace slgc
 
     //////////////////////////////////////////////////////////////////////////
 
-    bool ClassInfo::isCreatingObj = false;
+    int ClassInfo::isCreatingObj = 0;
     ClassInfo ClassInfo::Empty{ 0, 0, 0};
     ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
@@ -159,7 +164,7 @@ namespace slgc
     void registerPtr(PtrBase* p)
     {
         Impl::get()->registerPtr(p);
-        if ( ClassInfo::isCreatingObj ) {
+        if ( ClassInfo::isCreatingObj > 0 ) {
             // owner may not be the current one(e.g pointers on the stack of constructor)
             auto* owner = findOwnerMeta(p);
             if ( !owner ) return;

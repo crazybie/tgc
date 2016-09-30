@@ -26,16 +26,16 @@ namespace slgc
         {
             friend struct slgc::Impl;
         protected:
-            unsigned int    isRoot : 1;
-            unsigned int    index : 31;
-            ObjMeta*           meta;
+            mutable unsigned int    isRoot : 1;
+            unsigned int            index : 31;
+            ObjMeta*                meta;
 
             PtrBase();
             PtrBase(void* obj);
             ~PtrBase();
             void onPtrChanged();
         public:
-            void setAsLeaf() { isRoot = 0; }
+            void setAsLeaf() const { isRoot = 0; }
         };
 
         struct ClassInfo
@@ -45,7 +45,7 @@ namespace slgc
             public:
                 virtual ~PtrEnumerator() {}
                 virtual bool hasNext() = 0;
-                virtual PtrBase* getNext() = 0;
+                virtual const PtrBase* getNext() = 0;
                 void* operator new( size_t );
             };
 
@@ -60,11 +60,10 @@ namespace slgc
             size_t              size;
             std::vector<int>    memPtrOffsets;
             State               state;
-            static bool			isCreatingObj;
+            static int			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo(Alloc a, Dealloc d, int sz)
-                : alloc(a), dctor(d), size(sz), state(State::Unregistered){}
+            ClassInfo(Alloc a, Dealloc d, int sz): alloc(a), dctor(d), size(sz), state(State::Unregistered){}
             ObjMeta* allocObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(ObjMeta* owner, PtrBase* p);

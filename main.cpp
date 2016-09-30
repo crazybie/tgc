@@ -267,13 +267,13 @@ struct ArrayTest
     }
 };
 
-gc<ArrayTest> a;
-
-void testArray()
-{    
-    a = make_gc<ArrayTest>();
-    a->f();    
-}
+// gc<ArrayTest> a;
+// 
+// void testArray()
+// {    
+//     a = make_gc<ArrayTest>();
+//     a->f();    
+// }
 
 
 
@@ -289,24 +289,44 @@ void testCircledContainer()
         auto& node = make_gc<Node>();
         node->childs[1] = node;
     }    
-    collect(1000);
-    //assert(ok);
+    collect(20);
+    assert(ok);
+}
+
+bool operator<(rc& a, rc& b){
+    return a.a < b.a;
+}
+
+void testSet()
+{
+    if (0 )
+    {
+        gc_set<rc> t = make_gc_set<rc>();
+        auto o = make_gc<rc>();
+        t->insert(o);       
+    }
+    {
+        gc_map<gc<rc>, bool> t = make_gc_map<gc<rc>, bool>();
+        auto o = make_gc<rc>();
+        t[o] = make_gc<bool>(true);
+    }
+    collect(20);
 }
 
 
 int main()
 {    
-    b1 b("test");    
 #ifdef PROFILE
     for (int i = 0; i < 10; i++) 
 #endif
     {
+        testSet();
         testCircledContainer();
         testInsert();
         testEmpty();
         test();
         testMoveCtor();
         testCirc();
-        testArray();
+        //testArray();
     }
 }

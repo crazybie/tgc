@@ -1,5 +1,15 @@
 #pragma once
 #include <map>
+#include <set>
+
+namespace std
+{
+    template<typename T>
+    struct less<slgc::gc<T>>
+    {
+        bool operator()(const slgc::gc<T>& a, const slgc::gc<T>& b) const { return *a < *b; }
+    };
+}
 
 namespace slgc
 {
@@ -17,11 +27,11 @@ namespace slgc
         template<typename T, typename... Args>
         ObjMeta* createObj(ClassInfo* cls, Args&&... args)
         {
-            cls->isCreatingObj = true;
+            cls->isCreatingObj++;
             auto* meta = cls->allocObj();
             new ( meta->objPtr ) T(std::forward<Args>(args)...);
             cls->state = ClassInfo::State::Registered;
-            cls->isCreatingObj = false;
+            cls->isCreatingObj--;
             return meta;
         }
 
@@ -86,6 +96,8 @@ namespace slgc
 
     /// ============= Map ================
     
+    // NOT support using gc object as key...
+
     template<typename K, typename V>
     struct gc_map : gc<std::map<K, gc<V>>>
     {
@@ -105,6 +117,31 @@ namespace slgc
             {
                 using ContainerPtrEnumerator::ContainerPtrEnumerator;
                 PtrBase* getNext() { auto* ret = &it->second; ++it; return ret; }
+            };
+            return ( ClassInfo::PtrEnumerator* )new E(o);
+        };
+        return createObj<C>(cls, std::forward<Args>(args)...);
+    }
+
+    /// ============= Set ================
+
+  
+
+    template<typename V>
+    using gc_set = gc<std::set<gc<V>>>;
+
+    template<typename V, typename... Args>
+    gc_set<V> make_gc_set(Args&&... args)
+    {
+        using namespace details;
+        typedef typename gc_set<V>::pointee C;
+
+        ClassInfo* cls = ClassInfo::get<C>();
+        cls->enumPtrs = [](ClassInfo* cls, char* o) {
+            struct E : ContainerPtrEnumerator<C>
+            {
+                using ContainerPtrEnumerator::ContainerPtrEnumerator;
+                const PtrBase* getNext() { return &*it++; }
             };
             return ( ClassInfo::PtrEnumerator* )new E(o);
         };
