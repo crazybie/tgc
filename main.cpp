@@ -299,18 +299,13 @@ bool operator<(rc& a, rc& b){
 
 void testSet()
 {
-    if (0 )
+    if (1)
     {
         gc_set<rc> t = make_gc_set<rc>();
         auto o = make_gc<rc>();
         t->insert(o);       
     }
-    {
-        gc_map<gc<rc>, bool> t = make_gc_map<gc<rc>, bool>();
-        auto o = make_gc<rc>();
-        t[o] = make_gc<bool>(true);
-    }
-    collect(20);
+    collect(1);
 }
 
 

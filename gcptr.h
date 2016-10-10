@@ -63,7 +63,7 @@ namespace slgc
             static int			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo(Alloc a, Dealloc d, int sz): alloc(a), dctor(d), size(sz), state(State::Unregistered){}
+            ClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e): alloc(a), dctor(d), size(sz), enumPtrs(e),state(State::Unregistered){}
             ObjMeta* allocObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(ObjMeta* owner, PtrBase* p);
