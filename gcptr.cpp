@@ -128,8 +128,8 @@ namespace slgc
                 }
                 if ( nextSweeping == metaSet.end() ) {
                     state = State::RootMarking;
-                    //if ( metaSet.size() )
-                    //    goto _RootMarking;
+                    if ( metaSet.size() )
+                        goto _RootMarking;
                 }
                 break;
             }

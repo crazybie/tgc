@@ -270,5 +270,9 @@ namespace slgc
 }
 
 
-
+namespace std
+{
+    template<typename T, typename U>
+    bool operator<(const slgc::gc<T>& a, const slgc::gc<U>& b) { return *a < *b; }
+}
 
