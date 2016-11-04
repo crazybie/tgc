@@ -297,6 +297,16 @@ bool operator<(rc& a, rc& b){
     return a.a < b.a;
 }
 
+void testSet()
+{
+    if (1)
+    {
+        gc_set<rc> t = make_gc_set<rc>();
+        auto o = make_gc<rc>();
+        t->insert(o);       
+    }
+    collect(1);
+}
 
 
 int main()

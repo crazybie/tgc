@@ -143,7 +143,7 @@ namespace slgc
     //////////////////////////////////////////////////////////////////////////
 
     int ClassInfo::isCreatingObj = 0;
-    ClassInfo ClassInfo::Empty{ 0, 0, 0};
+    ClassInfo ClassInfo::Empty{ 0, 0, 0, 0};
     ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
     ObjMeta* findOwnerMeta(void* obj)
@@ -190,7 +190,7 @@ namespace slgc
         return meta;
     }
 
-    void* ClassInfo::PtrEnumerator::operator new( size_t sz)
+    void* IPtrEnumerator::operator new( size_t sz)
     {
         static char buf[255];
         return sz < sizeof(buf) ? buf : nullptr;
