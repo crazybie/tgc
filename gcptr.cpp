@@ -76,7 +76,11 @@ namespace slgc
             case State::RootMarking:
                 for ( ; nextRootMarking < pointers.size() && stepCnt-- >0; nextRootMarking++ ) {
                     auto p = pointers[nextRootMarking];
-                    if ( !p->meta ) continue;
+                    auto meta = p->meta;
+                    if ( !meta ) continue;
+                    for ( auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr); i->hasNext(); ) {
+                        i->getNext()->setAsLeaf();
+                    }
                     markAsRoot(p);
                 }
                 if ( nextRootMarking >= pointers.size() ) {
@@ -97,8 +101,6 @@ namespace slgc
                     auto iter = cls->enumPtrs(cls, o->objPtr);
                     for (; iter->hasNext(); stepCnt--) {
                         auto* ptr = iter->getNext();
-                        // pointers in STL containers are originally treated as root pointers, so corrected here.
-                        ptr->setAsLeaf(); 
                         auto* meta = ptr->meta;
                         if ( meta->markState == ObjMeta::Unmarked ) {
                             grayObjs.push_back(meta);
@@ -117,13 +119,8 @@ namespace slgc
                 for ( ; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
                     ObjMeta* meta = *nextSweeping;
                     if ( meta->markState == ObjMeta::Unmarked ) {
-                        // in case a container is recycled before we correct the sub pointers in ChildMaking phase.
-                        for ( auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr); i->hasNext(); ) {
-                            auto* subptr = i->getNext();
-                            subptr->setAsLeaf();
-                        }
-                        delete meta;
                         nextSweeping = metaSet.erase(nextSweeping);
+                        delete meta;
                         continue;
                     }
                     meta->markState = ObjMeta::Unmarked;
@@ -131,8 +128,8 @@ namespace slgc
                 }
                 if ( nextSweeping == metaSet.end() ) {
                     state = State::RootMarking;
-                    if ( metaSet.size() )
-                        goto _RootMarking;
+                    //if ( metaSet.size() )
+                    //    goto _RootMarking;
                 }
                 break;
             }
