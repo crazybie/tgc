@@ -2,9 +2,13 @@
 #include <set>
 #include <limits.h>
 
-namespace slgc
+namespace tgc
 {
     using namespace details;
+
+    int ClassInfo::isCreatingObj = 0;
+    ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
+    ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
 
     struct Impl
     {
@@ -40,6 +44,7 @@ namespace slgc
                 break;
             }
         }
+
         void markAsRoot(PtrBase* p)
         {
             if ( p->isRoot == 1 ) {
@@ -49,11 +54,20 @@ namespace slgc
                 }
             }
         }
+
         void registerPtr(PtrBase* p)
         {
             p->index = pointers.size();
             pointers.push_back(p);
+            if ( ClassInfo::isCreatingObj > 0 ) {
+                // owner may not be the current one(e.g pointers on the stack of constructor)
+                auto* owner = findOwnerMeta(p);
+                if ( !owner ) return;
+                p->setAsLeaf(); // we know it is leaf before tracing.
+                owner->clsInfo->registerSubPtr(owner, p);
+            }
         }
+
         void unregisterPtr(PtrBase* p)
         {
             std::swap(pointers[p->index], pointers.back());
@@ -68,6 +82,18 @@ namespace slgc
                 }
             }
         }
+
+        ObjMeta* findOwnerMeta(void* obj)
+        {
+            DummyMetaInfo.objPtr = (char*)obj;
+            auto i = metaSet.lower_bound(&DummyMetaInfo);
+            DummyMetaInfo.objPtr = 0;
+            if ( i == metaSet.end() || !( *i )->clsInfo->containsPtr(( *i )->objPtr, (char*)obj) ) {
+                return 0;
+            }
+            return *i;
+        };
+
         void collect(int stepCnt)
         {
             switch ( state ) {
@@ -139,39 +165,10 @@ namespace slgc
     void gc_collect(int steps) { return Impl::get()->collect(steps); }
 
 
+    //////////////////////////////////////////////////////////////////////////    
 
-    //////////////////////////////////////////////////////////////////////////
-
-    int ClassInfo::isCreatingObj = 0;
-    ClassInfo ClassInfo::Empty{ 0, 0, 0, 0};
-    ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
-
-    ObjMeta* findOwnerMeta(void* obj)
-    {
-        auto& objs = Impl::get()->metaSet;
-        DummyMetaInfo.objPtr = (char*)obj;
-        auto i = objs.lower_bound(&DummyMetaInfo);
-        DummyMetaInfo.objPtr = 0;
-        if ( i == objs.end() || !( *i )->clsInfo->containsPtr(( *i )->objPtr, (char*)obj) ) {
-            return 0;
-        }
-        return *i;
-    };
-
-    void registerPtr(PtrBase* p)
-    {
-        Impl::get()->registerPtr(p);
-        if ( ClassInfo::isCreatingObj > 0 ) {
-            // owner may not be the current one(e.g pointers on the stack of constructor)
-            auto* owner = findOwnerMeta(p);
-            if ( !owner ) return;
-            p->setAsLeaf(); // we know it is leaf before tracing.
-            owner->clsInfo->registerSubPtr(owner, p);
-        }
-    }
-
-    PtrBase::PtrBase() : meta(0), isRoot(1) { registerPtr(this); }
-    PtrBase::PtrBase(void* obj) : isRoot(1) { registerPtr(this); meta = findOwnerMeta(obj); }
+    PtrBase::PtrBase() : meta(0), isRoot(1) { Impl::get()->registerPtr(this); }
+    PtrBase::PtrBase(void* obj) : isRoot(1) { Impl::get()->registerPtr(this); meta = Impl::get()->findOwnerMeta(obj); }
     PtrBase::~PtrBase() { Impl::get()->unregisterPtr(this); }
     void PtrBase::onPtrChanged() { Impl::get()->onPtrChanged(this); }
 

@@ -10,7 +10,7 @@
 #include <vld.h>
 
 
-using namespace slgc;
+using namespace tgc;
 using std::string;
 using std::cout;
 using std::endl;
@@ -252,9 +252,9 @@ struct ArrayTest
         
     void f()
     {
-        a = make_gc_vec<rc>();
+        a = make_vector<rc>();
         a->push_back(make_gc<rc>());
-        b = make_gc_map<int, rc>();
+        b = make_map<int, rc>();
         (*b)[0] = make_gc<rc>();
         (*b)[1] = make_gc<rc>();
 
@@ -267,13 +267,14 @@ struct ArrayTest
     }
 };
 
-// gc<ArrayTest> a;
-// 
-// void testArray()
-// {    
-//     a = make_gc<ArrayTest>();
-//     a->f();    
-// }
+
+
+void testArray()
+{    
+    gc<ArrayTest> a;
+    a = make_gc<ArrayTest>();
+    a->f();    
+}
 
 
 
@@ -282,14 +283,14 @@ void testCircledContainer()
     static bool ok = false;
     struct Node
     {
-        gc_map<int, Node> childs = make_gc_map<int,Node>();
+        gc_map<int, Node> childs = make_map<int,Node>();
         ~Node() { ok = true; }
     };
     {
         auto& node = make_gc<Node>();
-        node->childs[0] = node;
+        node->childs[0] = node;        
     }    
-    collect(200);
+    collect(20);
     assert(ok);
 }
 
@@ -299,15 +300,39 @@ bool operator<(rc& a, rc& b){
 
 void testSet()
 {
-    if (1)
     {
-        gc_set<rc> t = make_gc_set<rc>();
+        gc_set<rc> t = make_set<rc>();
         auto& o = make_gc<rc>();
         t->insert(o);       
     }
     collect(1);
 }
 
+void testList()
+{
+    auto& l = make_list<int>();
+    l->push_back(make_gc<int>(1));
+    l->push_back(make_gc<int>(2));
+    l->pop_back();
+    assert(*l->back() == 1);
+}
+
+void testDeque()
+{
+    auto& l = make_deque<int>();
+    l->push_back(make_gc<int>(1));
+    l->push_back(make_gc<int>(2));
+    l->pop_back();
+    assert(*l->back() == 1);
+}
+
+void testHashMap()
+{
+    auto& l = make_unordered_map<int,int>();
+    l[1] = make_gc<int>(1);
+    assert(l->size() == 1);
+    assert(*l[1] == 1);    
+}
 
 int main()
 {    
@@ -322,6 +347,9 @@ int main()
         test();
         testMoveCtor();
         testCirc();
-        //testArray();
+        testArray();
+        testList();
+        testDeque();
+        testHashMap();
     }
 }

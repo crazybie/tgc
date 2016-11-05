@@ -1,5 +1,5 @@
 /*
-    A super lightweight incremental mark & sweep garbage collector.
+    TGC: Tiny incremental mark & sweep Garbage Collector.
 
     Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
@@ -16,8 +16,12 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <list>
+#include <deque>
+#include <unordered_map>
 
-namespace slgc
+
+namespace tgc
 {
     struct Impl;
 
@@ -27,7 +31,7 @@ namespace slgc
         
         class PtrBase
         {
-            friend struct slgc::Impl;
+            friend struct tgc::Impl;
         protected:
             mutable unsigned int    isRoot : 1;
             unsigned int            index : 31;
@@ -89,24 +93,11 @@ namespace slgc
                 bool operator()(ObjMeta* x, ObjMeta* y)const { return *x < *y; }
             };
 
-            explicit ObjMeta(ClassInfo* c, char* objPtr_) : objPtr(objPtr_), clsInfo(c), markState(MarkColor::Unmarked) {}
+            explicit ObjMeta(ClassInfo* c, char* o) : objPtr(o), clsInfo(c), markState(MarkColor::Unmarked) {}
             ~ObjMeta() { if ( objPtr ) clsInfo->dctor(clsInfo, objPtr); }
             bool operator<(ObjMeta& r) const { return objPtr + clsInfo->size <= r.objPtr; }
         };
                 
-
-        template<typename T, typename... Args>
-        ObjMeta* createObj(Args&&... args)
-        {
-            ClassInfo* cls = ClassInfo::get<T>();
-            cls->isCreatingObj++;
-            auto* meta = cls->allocObj();
-            new ( meta->objPtr ) T(std::forward<Args>(args)...);
-            cls->state = ClassInfo::State::Registered;
-            cls->isCreatingObj--;
-            return meta;
-        }
-
     };
 
 
@@ -200,8 +191,22 @@ namespace slgc
     template<typename T, typename... Args>
     gc<T> make_gc(Args&&... args)
     {
-        return details::createObj<T>(std::forward<Args>(args)...);
+        using namespace details;
+        ClassInfo* cls = ClassInfo::get<T>();
+        cls->isCreatingObj++;
+        auto* meta = cls->allocObj();
+        new ( meta->objPtr ) T(std::forward<Args>(args)...);
+        cls->state = ClassInfo::State::Registered;
+        cls->isCreatingObj--;
+        return meta;
     }
+    
+
+    //=================================================================================================
+    // Wrap STL Containers
+    //=================================================================================================
+
+
 
     /// ============= Vector ================
 
@@ -220,9 +225,50 @@ namespace slgc
     };
 
     template<typename T, typename... Args>
-    gc_vector<T> make_gc_vec(Args&&... args)
+    gc_vector<T> make_vector(Args&&... args)
     {
-        return details::createObj<std::vector<gc<T>>>(std::forward<Args>(args)...);
+        return make_gc<std::vector<gc<T>>>(std::forward<Args>(args)...);
+    }
+
+    /// ============= Deque ================
+
+    template<typename T>
+    struct gc_deque: gc<std::deque<gc<T>>>
+    {
+        using gc::gc;
+        gc<T>& operator[](int idx) { return ( *p )[idx]; }
+    };
+
+    template<typename T>
+    struct PtrEnumerator<std::deque<gc<T>>> : details::ContainerPtrEnumerator<std::deque<gc<T>>>
+    {
+        using ContainerPtrEnumerator::ContainerPtrEnumerator;
+        const details::PtrBase* getNext() override { return &*it++; }
+    };
+
+    template<typename T, typename... Args>
+    gc_deque<T> make_deque(Args&&... args)
+    {
+        return make_gc<std::deque<gc<T>>>(std::forward<Args>(args)...);
+    }
+
+
+    /// ============= List ================
+
+    template<typename T>
+    using gc_list = gc<std::list<gc<T>>>;
+
+    template<typename T>
+    struct PtrEnumerator<std::list<gc<T>>> : details::ContainerPtrEnumerator<std::list<gc<T>>>
+    {
+        using ContainerPtrEnumerator::ContainerPtrEnumerator;
+        const details::PtrBase* getNext() override { return &*it++; }
+    };
+
+    template<typename T, typename... Args>
+    gc_list<T> make_list(Args&&... args)
+    {
+        return make_gc<std::list<gc<T>>>(std::forward<Args>(args)...);
     }
 
     /// ============= Map ================
@@ -244,9 +290,33 @@ namespace slgc
     };
 
     template<typename K, typename V, typename... Args>
-    gc_map<K, V> make_gc_map(Args&&... args)
+    gc_map<K, V> make_map(Args&&... args)
     {
-        return details::createObj<std::map<K, gc<V>>>(std::forward<Args>(args)...);
+        return make_gc<std::map<K, gc<V>>>(std::forward<Args>(args)...);
+    }
+
+    /// ============= HashMap ================
+
+    // NOT support using gc object as key...
+
+    template<typename K, typename V>
+    struct gc_unordered_map : gc<std::unordered_map<K, gc<V>>>
+    {
+        using gc::gc;
+        gc<V>& operator[](const K& k) { return ( *p )[k]; }
+    };
+
+    template<typename K, typename V>
+    struct PtrEnumerator<std::unordered_map<K, gc<V>>> : details::ContainerPtrEnumerator<std::unordered_map<K, gc<V>>>
+    {
+        using ContainerPtrEnumerator::ContainerPtrEnumerator;
+        const details::PtrBase* getNext() override { auto* ret = &it->second; ++it; return ret; }
+    };
+
+    template<typename K, typename V, typename... Args>
+    gc_unordered_map<K, V> make_unordered_map(Args&&... args)
+    {
+        return make_gc<std::unordered_map<K, gc<V>>>(std::forward<Args>(args)...);
     }
 
     /// ============= Set ================
@@ -263,9 +333,9 @@ namespace slgc
     };
 
     template<typename V, typename... Args>
-    gc_set<V> make_gc_set(Args&&... args)
+    gc_set<V> make_set(Args&&... args)
     {
-        return details::createObj<std::set<gc<V>>>(std::forward<Args>(args)...);
+        return make_gc<std::set<gc<V>>>(std::forward<Args>(args)...);
     }
 }
 
@@ -273,6 +343,6 @@ namespace slgc
 namespace std
 {
     template<typename T, typename U>
-    bool operator<(const slgc::gc<T>& a, const slgc::gc<U>& b) { return *a < *b; }
+    bool operator<(const tgc::gc<T>& a, const tgc::gc<U>& b) { return *a < *b; }
 }
 
