@@ -202,11 +202,41 @@ namespace tgc
     }
     
 
+
+
     //=================================================================================================
     // Wrap STL Containers
     //=================================================================================================
 
+    template<typename T>
+    struct gc_func;
 
+    template<typename R, typename... A>
+    struct gc_func<R(A...)>
+    {
+        struct Callable
+        {
+            virtual ~Callable(){}
+            virtual R call(A... a) = 0;
+        };
+
+        gc<Callable> callable;
+
+        template<typename F>
+        struct Imp : Callable
+        {
+            F f;
+            Imp(F& ff) : f(ff) {}
+            R call(A... a) override { return f(a...); }
+        };
+
+        gc_func() {}
+
+        template<typename F>
+        void operator=(F& f) { callable = make_gc<Imp<F>>(f); }
+
+        R operator()(A... a) { return callable->call(a...); }
+    };
 
     /// ============= Vector ================
 

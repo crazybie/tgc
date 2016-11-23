@@ -334,6 +334,22 @@ void testHashMap()
     assert(*l[1] == 1);    
 }
 
+void testLambda()
+{
+    gc_func<int()> ff;
+    {
+        auto l = make_gc<int>(1);
+        auto f = [=] {
+            return *l;
+        };
+
+        ff = f;
+    }
+
+    int i = ff();
+    assert(i == 1);
+}
+
 int main()
 {    
 #ifdef PROFILE
@@ -351,5 +367,6 @@ int main()
         testList();
         testDeque();
         testHashMap();
+        testLambda();
     }
 }
