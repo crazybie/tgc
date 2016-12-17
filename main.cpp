@@ -89,7 +89,6 @@ struct rc
     int  a = 11;
 	rc()
 	{
-		collect();
 	}
 	~rc()
 	{
@@ -103,7 +102,7 @@ void test()
     {
         // Test "recursive" construction (insure that calls to collect during construction
         // do not cause premature collection of the node).
-        gc<rc> prc(make_gc<rc>());
+        gc<rc> prc = make_gc<rc>();
 
         // The following lines may be uncommented to illustrate one behavior of the
         // bug in VC++ in handling an assignment to a "real pointer", which is clearly
