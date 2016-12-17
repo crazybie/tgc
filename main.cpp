@@ -7,6 +7,7 @@
 #include <functional>
 #include <assert.h>
 
+#define FVLD_FORCE_ENABLE
 #include <vld.h>
 
 
@@ -255,7 +256,7 @@ struct ArrayTest
         a->push_back(make_gc<rc>());
         b = make_map<int, rc>();
         (*b)[0] = make_gc<rc>();
-        (*b)[1] = make_gc<rc>();
+        b[1] = make_gc<rc>();
 
         b->find(1);
         bar(b);

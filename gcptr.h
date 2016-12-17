@@ -42,7 +42,7 @@ namespace tgc
             ~PtrBase();
             void onPtrChanged();
         public:
-            void setAsLeaf() const { isRoot = 0; }
+            void setLeaf() const { isRoot = 0; }
         };
 
         class IPtrEnumerator

@@ -63,7 +63,7 @@ namespace tgc
                 // owner may not be the current one(e.g pointers on the stack of constructor)
                 auto* owner = findOwnerMeta(p);
                 if ( !owner ) return;
-                p->setAsLeaf(); // we know it is leaf before tracing.
+                p->setLeaf(); // we know it is leaf before tracing.
                 owner->clsInfo->registerSubPtr(owner, p);
             }
         }
@@ -105,7 +105,7 @@ namespace tgc
                     auto meta = p->meta;
                     if ( !meta ) continue;
                     for ( auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr); i->hasNext(); ) {
-                        i->getNext()->setAsLeaf();
+                        i->getNext()->setLeaf();
                     }
                     markAsRoot(p);
                 }
