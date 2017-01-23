@@ -189,7 +189,7 @@ namespace tgc
     }
 
     template<typename T, typename... Args>
-    gc<T> make_gc(Args&&... args)
+    gc<T> gc_new(Args&&... args)
     {
         using namespace details;
         ClassInfo* cls = ClassInfo::get<T>();
@@ -233,7 +233,7 @@ namespace tgc
         gc_func() {}
 
         template<typename F>
-        void operator=(F& f) { callable = make_gc<Imp<F>>(f); }
+        void operator=(F& f) { callable = gc_new<Imp<F>>(f); }
 
         R operator()(A... a) { return callable->call(a...); }
     };
@@ -242,7 +242,7 @@ namespace tgc
 
     template<typename T>
     struct gc_vector : gc<std::vector<gc<T>>>
-    {
+    {   
         using gc::gc;
         gc<T>& operator[](int idx) { return ( *p )[idx]; }
     };
@@ -255,9 +255,9 @@ namespace tgc
     };
 
     template<typename T, typename... Args>
-    gc_vector<T> make_vector(Args&&... args)
+    gc_vector<T> gc_new_vector(Args&&... args)
     {
-        return make_gc<std::vector<gc<T>>>(std::forward<Args>(args)...);
+        return gc_new<std::vector<gc<T>>>(std::forward<Args>(args)...);
     }
 
     /// ============= Deque ================
@@ -277,9 +277,9 @@ namespace tgc
     };
 
     template<typename T, typename... Args>
-    gc_deque<T> make_deque(Args&&... args)
+    gc_deque<T> gc_new_deque(Args&&... args)
     {
-        return make_gc<std::deque<gc<T>>>(std::forward<Args>(args)...);
+        return gc_new<std::deque<gc<T>>>(std::forward<Args>(args)...);
     }
 
 
@@ -296,9 +296,9 @@ namespace tgc
     };
 
     template<typename T, typename... Args>
-    gc_list<T> make_list(Args&&... args)
+    gc_list<T> gc_new_list(Args&&... args)
     {
-        return make_gc<std::list<gc<T>>>(std::forward<Args>(args)...);
+        return gc_new<std::list<gc<T>>>(std::forward<Args>(args)...);
     }
 
     /// ============= Map ================
@@ -320,9 +320,9 @@ namespace tgc
     };
 
     template<typename K, typename V, typename... Args>
-    gc_map<K, V> make_map(Args&&... args)
+    gc_map<K, V> gc_new_map(Args&&... args)
     {
-        return make_gc<std::map<K, gc<V>>>(std::forward<Args>(args)...);
+        return gc_new<std::map<K, gc<V>>>(std::forward<Args>(args)...);
     }
 
     /// ============= HashMap ================
@@ -344,9 +344,9 @@ namespace tgc
     };
 
     template<typename K, typename V, typename... Args>
-    gc_unordered_map<K, V> make_unordered_map(Args&&... args)
+    gc_unordered_map<K, V> gc_new_unordered_map(Args&&... args)
     {
-        return make_gc<std::unordered_map<K, gc<V>>>(std::forward<Args>(args)...);
+        return gc_new<std::unordered_map<K, gc<V>>>(std::forward<Args>(args)...);
     }
 
     /// ============= Set ================
@@ -363,9 +363,9 @@ namespace tgc
     };
 
     template<typename V, typename... Args>
-    gc_set<V> make_set(Args&&... args)
+    gc_set<V> gc_new_set(Args&&... args)
     {
-        return make_gc<std::set<gc<V>>>(std::forward<Args>(args)...);
+        return gc_new<std::set<gc<V>>>(std::forward<Args>(args)...);
     }
 }
 

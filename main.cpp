@@ -103,7 +103,7 @@ void test()
     {
         // Test "recursive" construction (insure that calls to collect during construction
         // do not cause premature collection of the node).
-        gc<rc> prc = make_gc<rc>();
+        gc<rc> prc = gc_new<rc>();
 
         // The following lines may be uncommented to illustrate one behavior of the
         // bug in VC++ in handling an assignment to a "real pointer", which is clearly
@@ -116,7 +116,7 @@ void test()
 
         gc<string> p1;
         {
-            gc<d1> p2(make_gc<d1>("first"));
+            gc<d1> p2(gc_new<d1>("first"));
             gc<b1> p3(p2);
             p1.reset(&p3->name);
             // The following line may be uncommented to illustrate another behavior of the
@@ -129,7 +129,7 @@ void test()
             // the code in Debug.  To really see the danger here comment out the previous
             // line of code as well and notice the behavior change at run time.
             //		p1 = &p3->name;
-            gc<b1> p4(make_gc<d2>("second"));
+            gc<b1> p4(gc_new<d2>("second"));
             gc<b2> pz(dynamic_cast<b2*>(&*p4));
             if ((void*)&*p4 == (void*)&*pz)
                 throw std::runtime_error("unexpected");
@@ -162,10 +162,10 @@ void testCirc()
 {   
     PROFILE_LOOP        
     {
-        auto p5 = make_gc<circ>("root");
+        auto p5 = gc_new<circ>("root");
         {
-            auto p6 = make_gc<circ>("first");
-            auto p7 = make_gc<circ>("second");
+            auto p6 = gc_new<circ>("first");
+            auto p7 = gc_new<circ>("second");
 
             p5->ptr = p6;
 
@@ -184,7 +184,7 @@ void testMoveCtor()
     {
         auto f = []
         {
-            auto t = make_gc<b1>("");
+            auto t = gc_new<b1>("");
             return std::move(t);
         };
 
@@ -198,7 +198,7 @@ void testMakeGcObj()
 {
     PROFILE_LOOP
     {
-        auto a = make_gc<b1>("test");
+        auto a = gc_new<b1>("test");
     }
 }
 
@@ -206,7 +206,7 @@ void testEmpty()
 {
     PROFILE_LOOP
     {
-        gc<b1> p(make_gc<b1>("a"));
+        gc<b1> p(gc_new<b1>("a"));
         gc<b1> emptry;
     }    
 }
@@ -217,12 +217,12 @@ void testInsert()
     std::vector<gc<b1>> objs;
     objs.reserve(2000);
     for (int k = 0; k < 2000; k++) {
-        gc<b1> p(make_gc<b1>("a"));
+        gc<b1> p(gc_new<b1>("a"));
         objs.push_back(p);
     }
     PROFILE_LOOP
     {
-        gc<b1> p = make_gc<b1>("a");
+        gc<b1> p = gc_new<b1>("a");
         objs[rand() % objs.size()] = p;
     }
 #endif
@@ -241,7 +241,7 @@ struct g
 		int i = 0;
 	}
 };
-//gc_ptr<g> global(make_gc<g>());
+//gc_ptr<g> global(gcnew<g>());
 
 
 struct ArrayTest
@@ -252,18 +252,18 @@ struct ArrayTest
         
     void f()
     {
-        a = make_vector<rc>();
-        a->push_back(make_gc<rc>());
-        b = make_map<int, rc>();
-        (*b)[0] = make_gc<rc>();
-        b[1] = make_gc<rc>();
+        a = gc_new_vector<rc>();
+        a->push_back(gc_new<rc>());
+        b = gc_new_map<int, rc>();
+        (*b)[0] = gc_new<rc>();
+        b[1] = gc_new<rc>();
 
         b->find(1);
         bar(b);
     }
     void bar(gc_map<int, rc> cc)
     {
-        cc->insert(std::make_pair(1, make_gc<rc>()));
+        cc->insert(std::make_pair(1, gc_new<rc>()));
     }
 };
 
@@ -272,7 +272,7 @@ struct ArrayTest
 void testArray()
 {    
     gc<ArrayTest> a;
-    a = make_gc<ArrayTest>();
+    a = gc_new<ArrayTest>();
     a->f();    
 }
 
@@ -283,11 +283,11 @@ void testCircledContainer()
     static bool ok = false;
     struct Node
     {
-        gc_map<int, Node> childs = make_map<int,Node>();
+        gc_map<int, Node> childs = gc_new_map<int,Node>();
         ~Node() { ok = true; }
     };
     {
-        auto& node = make_gc<Node>();
+        auto& node = gc_new<Node>();
         node->childs[0] = node;        
     }    
     collect(20);
@@ -301,8 +301,8 @@ bool operator<(rc& a, rc& b){
 void testSet()
 {
     {
-        gc_set<rc> t = make_set<rc>();
-        auto& o = make_gc<rc>();
+        gc_set<rc> t = gc_new_set<rc>();
+        auto& o = gc_new<rc>();
         t->insert(o);       
     }
     collect(1);
@@ -310,26 +310,26 @@ void testSet()
 
 void testList()
 {
-    auto& l = make_list<int>();
-    l->push_back(make_gc<int>(1));
-    l->push_back(make_gc<int>(2));
+    auto& l = gc_new_list<int>();
+    l->push_back(gc_new<int>(1));
+    l->push_back(gc_new<int>(2));
     l->pop_back();
     assert(*l->back() == 1);
 }
 
 void testDeque()
 {
-    auto& l = make_deque<int>();
-    l->push_back(make_gc<int>(1));
-    l->push_back(make_gc<int>(2));
+    auto& l = gc_new_deque<int>();
+    l->push_back(gc_new<int>(1));
+    l->push_back(gc_new<int>(2));
     l->pop_back();
     assert(*l->back() == 1);
 }
 
 void testHashMap()
 {
-    auto& l = make_unordered_map<int,int>();
-    l[1] = make_gc<int>(1);
+    auto& l = gc_new_unordered_map<int,int>();
+    l[1] = gc_new<int>(1);
     assert(l->size() == 1);
     assert(*l[1] == 1);    
 }
@@ -338,7 +338,7 @@ void testLambda()
 {
     gc_func<int()> ff;
     {
-        auto l = make_gc<int>(1);
+        auto l = gc_new<int>(1);
         auto f = [=] {
             return *l;
         };
