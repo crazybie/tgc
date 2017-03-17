@@ -16,8 +16,8 @@ namespace tgc
             typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
             enum class State { RootMarking, ChildMarking, Sweeping };
 
-            vector<PtrBase*>   pointers;
-            vector<ObjMeta*>   grayObjs;
+            vector<PtrBase*>        pointers;
+            vector<ObjMeta*>        grayObjs;
             MetaSet				    metaSet;
             size_t				    nextRootMarking;
             MetaSet::iterator	    nextSweeping;
@@ -71,7 +71,7 @@ namespace tgc
                     // owner may not be the current one(e.g pointers on the stack of constructor)
                     auto* owner = findOwnerMeta(p);
                     if ( !owner ) return;
-                    p->setLeaf(); // we know it is leaf before tracing.
+                    p->isRoot = 0; // we know it is leaf before tracing.
                     owner->clsInfo->registerSubPtr(owner, p);
                 }
             }
@@ -113,7 +113,7 @@ namespace tgc
                         auto meta = p->meta;
                         if ( !meta ) continue;
                         for ( auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr); i->hasNext(); ) {
-                            i->getNext()->setLeaf();
+                            i->getNext()->isRoot = 0;
                         }
                         markAsRoot(p);
                     }
@@ -131,9 +131,8 @@ namespace tgc
                         grayObjs.pop_back();
                         o->markState = ObjMeta::Alive;
 
-                        auto cls = o->clsInfo;
-                        auto iter = cls->enumPtrs(cls, o->objPtr);
-                        for ( ; iter->hasNext(); stepCnt-- ) {
+                        auto cls = o->clsInfo;                        
+                        for (auto iter = cls->enumPtrs(cls, o->objPtr); iter->hasNext(); stepCnt-- ) {
                             auto* ptr = iter->getNext();
                             auto* meta = ptr->meta;
                             if ( meta->markState == ObjMeta::Unmarked ) {

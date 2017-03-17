@@ -42,8 +42,6 @@ namespace tgc
             PtrBase(void* obj);
             ~PtrBase();
             void onPtrChanged();
-        public:
-            void setLeaf() const { isRoot = 0; }
         };
 
         class IPtrEnumerator
@@ -67,7 +65,7 @@ namespace tgc
             Dealloc             dctor;
             EnumPtrs            enumPtrs;
             size_t              size;
-            vector<int>    memPtrOffsets;
+            vector<int>         memPtrOffsets;
             State               state;
             static int			isCreatingObj;
             static ClassInfo    Empty;
@@ -402,6 +400,7 @@ namespace tgc
     using details::gc_new;
     using details::gc_collect;
     using details::gc_from;
+
     using details::gc_new_list;
     using details::gc_new_deque;
     using details::gc_new_vector;
