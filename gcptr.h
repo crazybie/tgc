@@ -182,8 +182,7 @@ namespace tgc
         
         template<typename T, typename... Args>
         gc<T> gc_new(Args&&... args)
-        {
-            using namespace details;
+        {            
             ClassInfo* cls = ClassInfo::get<T>();
             cls->isCreatingObj++;
             auto* meta = cls->allocObj();
