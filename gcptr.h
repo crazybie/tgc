@@ -57,11 +57,9 @@ namespace tgc
         {
         public:
             enum class State : char { Unregistered, Registered };
-            typedef char* ( *Alloc )( ClassInfo* cls );
             typedef void(*Dealloc)( ClassInfo* cls, void* obj );
             typedef IPtrEnumerator* ( *EnumPtrs )( ClassInfo* cls, char* );
 
-            Alloc               alloc;
             Dealloc             dctor;
             EnumPtrs            enumPtrs;
             size_t              size;
@@ -70,8 +68,8 @@ namespace tgc
             static int			isCreatingObj;
             static ClassInfo    Empty;
 
-            ClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e) : alloc(a), dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
-            ObjMeta* allocObj();
+            ClassInfo(Dealloc d, int sz, EnumPtrs e) : dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
+            ObjMeta* allocObj(int size);
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(ObjMeta* owner, PtrBase* p);
 
@@ -171,10 +169,9 @@ namespace tgc
         template<typename T>
         ClassInfo* ClassInfo::get()
         {
-            auto alloc = [](ClassInfo* cls) { return new char[sizeof(T)]; };
             auto destroy = [](ClassInfo* cls, void* obj) { ( (T*)obj )->~T(); delete[](char*)obj; };
             auto enumPtrs = [](ClassInfo* cls, char* o) { return ( IPtrEnumerator* ) new PtrEnumerator<T>(cls, o); };
-            static ClassInfo i{ alloc, destroy, sizeof(T), enumPtrs };
+            static ClassInfo i{ destroy, sizeof(T), enumPtrs };
             return &i;
         }
         
@@ -183,7 +180,7 @@ namespace tgc
         {            
             ClassInfo* cls = ClassInfo::get<T>();
             cls->isCreatingObj++;
-            auto* meta = cls->allocObj();
+            auto* meta = cls->allocObj(sizeof(T));
             new ( meta->objPtr ) T(forward<Args>(args)...);
             cls->state = ClassInfo::State::Registered;
             cls->isCreatingObj--;

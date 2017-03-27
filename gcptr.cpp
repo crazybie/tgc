@@ -7,8 +7,8 @@ namespace tgc
     namespace details
     {
         int ClassInfo::isCreatingObj = 0;
-        ClassInfo ClassInfo::Empty{ 0, 0, 0, 0 };
-        ObjMeta DummyMetaInfo(&ClassInfo::Empty, nullptr);
+        ClassInfo ClassInfo::Empty{ 0, 0, 0 };
+        ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0);
 
         class Impl
         {
@@ -16,18 +16,20 @@ namespace tgc
             typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
             enum class State { RootMarking, ChildMarking, Sweeping };
 
-            vector<PtrBase*>        pointers;
-            vector<ObjMeta*>        grayObjs;
-            MetaSet				    metaSet;
-            size_t				    nextRootMarking;
-            MetaSet::iterator	    nextSweeping;
-            State				    state;
+            vector<PtrBase*>    pointers;
+            vector<ObjMeta*>    grayObjs;
+            MetaSet			    metaSet;
+            size_t			    nextRootMarking;
+            MetaSet::iterator   nextSweeping;
+            State			    state;
 
             Impl() : state(State::RootMarking), nextRootMarking(0) {}
+
             ~Impl()
             {
                 collect(INT_MAX);
             }
+
             static Impl* get()
             {
                 static Impl i;
@@ -181,23 +183,26 @@ namespace tgc
         {
             Impl::get()->registerPtr(this);
         }
+
         PtrBase::PtrBase(void* obj) : isRoot(1)
         {
             Impl::get()->registerPtr(this); 
             meta = Impl::get()->findOwnerMeta(obj);
         }
+
         PtrBase::~PtrBase()
         {
             Impl::get()->unregisterPtr(this);
         }
+        
         void PtrBase::onPtrChanged()
         {
             Impl::get()->onPtrChanged(this);
         }
 
-        ObjMeta* ClassInfo::allocObj()
+        ObjMeta* ClassInfo::allocObj(int size)
         {
-            auto buf = alloc(this);
+            auto buf = new char[size];
             auto meta = new ObjMeta(this, buf);
             Impl::get()->metaSet.insert(meta);
             return meta;
