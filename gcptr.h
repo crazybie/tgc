@@ -100,42 +100,43 @@ namespace tgc
 
 
         template <typename T>
-        class gc : public PtrBase
+        class GcPtr : public PtrBase
         {
         public:
             typedef T pointee;
-            template<typename U> friend class gc;
+            template<typename U> friend class GcPtr;
 
         public:
             // Constructors
 
-            gc() : p(nullptr) {}
-            gc(ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
-            explicit gc(T* obj) : PtrBase(obj), p(obj) {}
-            template <typename U>
-            gc(const gc<U>& r) { reset(r.p, r.meta); }
-            gc(const gc& r) { reset(r.p, r.meta); }
-            gc(gc&& r) { reset(r.p, r.meta); r = nullptr; }
-
+			GcPtr():p(nullptr) {}
+			GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
+			explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
+			template <typename U>
+			GcPtr(const GcPtr<U>& r) { reset(r.p, r.meta); }
+			GcPtr(const GcPtr& r) { reset(r.p, r.meta); }
+			GcPtr(GcPtr&& r) { reset(r.p, r.meta); r = nullptr; }
+            
             // Operators
 
             template <typename U>
-            gc& operator=(const gc<U>& r) { reset(r.p, r.meta);  return *this; }
-            gc& operator=(const gc& r) { reset(r.p, r.meta);  return *this; }
-            gc& operator=(gc&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
+            GcPtr& operator=(const GcPtr<U>& r) { reset(r.p, r.meta);  return *this; }
+            GcPtr& operator=(const GcPtr& r) { reset(r.p, r.meta);  return *this; }
+            GcPtr& operator=(GcPtr&& r) { reset(r.p, r.meta); r.meta = 0; r.p = 0; return *this; }
             T* operator->() const { return p; }
             T& operator*() const { return *p; }
             explicit operator bool() const { return p != 0; }
-            bool operator==(const gc& r)const { return meta == r.meta; }
-            bool operator!=(const gc& r)const { return meta != r.meta; }
+            bool operator==(const GcPtr& r)const { return meta == r.meta; }
+            bool operator!=(const GcPtr& r)const { return meta != r.meta; }
             void operator=(T*) = delete;
-            gc& operator=(decltype( nullptr )) { meta = 0; p = 0; return *this; }
+            GcPtr& operator=(decltype( nullptr )) { meta = 0; p = 0; return *this; }
+			bool operator<(const GcPtr& r) const { return *p < *r.p; }
 
             // Methods
 
-            void reset(T* o) { gc(o).swap(*this); }
+            void reset(T* o) { GcPtr(o).swap(*this); }
             void reset(T* o, ObjMeta* n) { p = o; meta = n; onPtrChanged(); }
-            void swap(gc& r)
+            void swap(GcPtr& r)
             {
                 auto* temp = p;
                 auto* tempMeta = meta;
@@ -146,6 +147,20 @@ namespace tgc
         protected:
             T*  p;
         };
+
+		
+		template<typename T>
+		class gc : public GcPtr<T>
+		{
+			using base = GcPtr;
+		public:
+			using GcPtr::GcPtr;
+			gc(){}
+			gc(ObjMeta* o):base(o){}
+		};
+
+
+
 
         void gc_collect(int steps);
 
@@ -403,13 +418,24 @@ namespace tgc
     using details::gc_new_vector;
     using details::gc_new_map;
     using details::gc_new_unordered_map;    
-    using details::gc_new_set;    
-}
+	using details::gc_new_set;
 
 
-namespace std
-{
-    template<typename T, typename U>
-    bool operator<(const tgc::gc<T>& a, const tgc::gc<U>& b) { return *a < *b; }
+#define GC_AUTO_BOX(T)\
+	template<> \
+	class gc<T> : public details::GcPtr<T> \
+	{ \
+	public: \
+		using GcPtr::GcPtr; \
+		gc(T i): GcPtr(gc_new<T>(i)) {} \
+		gc() {} \
+		operator T& () { return GcPtr::operator*(); } \
+	};	
+
+	GC_AUTO_BOX(int);
+	GC_AUTO_BOX(float);
+	GC_AUTO_BOX(std::string);
+
+	using gc_string = gc<std::string>;
 }
 

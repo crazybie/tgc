@@ -350,12 +350,25 @@ void testLambda()
     assert(i == 1);
 }
 
+void testPrimaryImplicitCtor() {
+	gc<int> a(1), b = gc_new<int>(2);	
+	assert(a < b);
+
+	auto& v = gc_new_vector<int>();
+	v->push_back(1);	
+	assert(v[0] == 1);
+
+	gc_string s = "213";
+	printf("%s", s->c_str());
+}
+
 int main()
 {    
 #ifdef PROFILE
     for (int i = 0; i < 10; i++) 
 #endif
     {
+		testPrimaryImplicitCtor();
         testCircledContainer();
         testSet();       
         testInsert();
