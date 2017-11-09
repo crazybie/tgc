@@ -280,18 +280,18 @@ void testArray()
 
 void testCircledContainer()
 {
-    static bool ok = false;
+    static int delCnt = 0;
     struct Node
     {
         gc_map<int, Node> childs = gc_new_map<int,Node>();
-        ~Node() { ok = true; }
+        ~Node() { delCnt++; }
     };
     {
         auto& node = gc_new<Node>();
         node->childs[0] = node;        
     }    
     collect(20);
-    assert(ok);
+    assert(delCnt==1);
 }
 
 bool operator<(rc& a, rc& b){
@@ -368,8 +368,8 @@ int main()
     for (int i = 0; i < 10; i++) 
 #endif
     {
-		testPrimaryImplicitCtor();
         testCircledContainer();
+		testPrimaryImplicitCtor();
         testSet();       
         testInsert();
         testEmpty();

@@ -180,7 +180,7 @@ namespace tgc
         }
         
         PtrBase::PtrBase() : meta(0), isRoot(1)
-        {
+        {            
             Impl::get()->registerPtr(this);
         }
 
@@ -200,18 +200,18 @@ namespace tgc
             Impl::get()->onPtrChanged(this);
         }
 
-        ObjMeta* ClassInfo::allocObj(int size)
+        ObjMeta* ClassInfo::allocObj()
         {
             auto buf = new char[size];
-            auto meta = new ObjMeta(this, buf);
+            auto meta = new ObjMeta(this, buf);            
             Impl::get()->metaSet.insert(meta);
             return meta;
         }
 
-        void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p)
+        void ClassInfo::registerSubPtr(ObjMeta* meta, PtrBase* p)
         {
             if ( state == ClassInfo::State::Registered ) return;
-            auto offset = (char*)p - (char*)owner->objPtr;
+            auto offset = (char*)p - (char*)meta->objPtr;
             memPtrOffsets.push_back(offset);
         }
 

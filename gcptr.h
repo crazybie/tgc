@@ -14,6 +14,7 @@
 // TODO: fix crash when enable iterator debugging
 #define _HAS_ITERATOR_DEBUGGING  0
 #include <vector>
+
 #include <map>
 #include <set>
 #include <list>
@@ -69,7 +70,7 @@ namespace tgc
             static ClassInfo    Empty;
 
             ClassInfo(Dealloc d, int sz, EnumPtrs e) : dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
-            ObjMeta* allocObj(int size);
+            ObjMeta* allocObj();
             bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
             void registerSubPtr(ObjMeta* owner, PtrBase* p);
 
@@ -184,8 +185,14 @@ namespace tgc
         template<typename T>
         ClassInfo* ClassInfo::get()
         {
-            auto destroy = [](ClassInfo* cls, void* obj) { ( (T*)obj )->~T(); delete[](char*)obj; };
-            auto enumPtrs = [](ClassInfo* cls, char* o) { return ( IPtrEnumerator* ) new PtrEnumerator<T>(cls, o); };
+            auto destroy = [](ClassInfo* cls, void* mem) { 					
+				auto obj = (T*)mem;
+				obj->~T();
+				delete[](char*)obj; 
+			};
+            auto enumPtrs = [](ClassInfo* cls, char* o) { 
+				return ( IPtrEnumerator* ) new PtrEnumerator<T>(cls, o); 
+			};
             static ClassInfo i{ destroy, sizeof(T), enumPtrs };
             return &i;
         }
@@ -195,7 +202,7 @@ namespace tgc
         {            
             ClassInfo* cls = ClassInfo::get<T>();
             cls->isCreatingObj++;
-            auto* meta = cls->allocObj(sizeof(T));
+            auto* meta = cls->allocObj();
             new ( meta->objPtr ) T(forward<Args>(args)...);
             cls->state = ClassInfo::State::Registered;
             cls->isCreatingObj--;
