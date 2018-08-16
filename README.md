@@ -8,6 +8,7 @@ Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framewo
 - auto discovery memory relations without any extra code
 - super lightweight
 - none instrisive
+- incremental marking and sweeping
 - no other dependencies
 
 
