@@ -5,7 +5,7 @@
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
 ### Hightlights
-- auto discovery memory relations without any extra code
+- auto discovery memory relations *without any extra code*
 - super lightweight
 - none instrisive
 - incremental marking and sweeping
