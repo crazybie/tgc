@@ -5,7 +5,7 @@
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
 ### Hightlights
-- no instrisive
+- none instrisive
 - super lightweight
 - smart point alike
 - no other dependencies
@@ -27,8 +27,8 @@ int main() {
     return 0;
 }
 
-
 ```
+See main.cpp for more usages.
 
 ### License
 
