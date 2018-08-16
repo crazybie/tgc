@@ -28,7 +28,7 @@ int main() {
 }
 
 ```
-See main.cpp for more usages.
+See main.cpp for more tests.
 
 ### License
 
