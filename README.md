@@ -5,11 +5,10 @@
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
 ### Hightlights
-- none instrisive
+- auto discovery memory relations without any extra code
 - super lightweight
-- smart point alike
+- none instrisive
 - no other dependencies
-- minimal overhead
 
 
 ### TODO
