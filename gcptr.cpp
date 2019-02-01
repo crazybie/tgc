@@ -18,10 +18,10 @@ namespace tgc
 
             vector<PtrBase*>    pointers;
             vector<ObjMeta*>    grayObjs;
-            MetaSet			    metaSet;
-            size_t			    nextRootMarking;
+            MetaSet             metaSet;
+            size_t              nextRootMarking;
             MetaSet::iterator   nextSweeping;
-            State			    state;
+            State               state;
 
             Impl() : state(State::RootMarking), nextRootMarking(0) {}
 
@@ -40,8 +40,8 @@ namespace tgc
             {
                 if ( !p->meta )return;
                 switch ( state ) {
-                case State::RootMarking:	if ( p->index < nextRootMarking ) markAsRoot(p); break;
-                case State::ChildMarking:	markAsRoot(p); break;
+                case State::RootMarking:    if ( p->index < nextRootMarking ) markAsRoot(p); break;
+                case State::ChildMarking:   markAsRoot(p); break;
                 case State::Sweeping:
                     if ( p->meta->markState == ObjMeta::Unmarked ) {
                         if ( *p->meta < **nextSweeping ) {

@@ -8,7 +8,7 @@
     - thread safe.
 
     by crazybie at soniced@sina.com
-    */
+*/
 
 #pragma once
 // TODO: fix crash when enable iterator debugging
@@ -66,7 +66,7 @@ namespace tgc
             size_t              size;
             vector<int>         memPtrOffsets;
             State               state;
-            static int			isCreatingObj;
+            static int          isCreatingObj;
             static ClassInfo    Empty;
 
             ClassInfo(Dealloc d, int sz, EnumPtrs e) : dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
@@ -110,13 +110,13 @@ namespace tgc
         public:
             // Constructors
 
-			GcPtr():p(nullptr) {}
-			GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
-			explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
-			template <typename U>
-			GcPtr(const GcPtr<U>& r) { reset(r.p, r.meta); }
-			GcPtr(const GcPtr& r) { reset(r.p, r.meta); }
-			GcPtr(GcPtr&& r) { reset(r.p, r.meta); r = nullptr; }
+            GcPtr():p(nullptr) {}
+            GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
+            explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
+            template <typename U>
+            GcPtr(const GcPtr<U>& r) { reset(r.p, r.meta); }
+            GcPtr(const GcPtr& r) { reset(r.p, r.meta); }
+            GcPtr(GcPtr&& r) { reset(r.p, r.meta); r = nullptr; }
             
             // Operators
 
@@ -131,7 +131,7 @@ namespace tgc
             bool operator!=(const GcPtr& r)const { return meta != r.meta; }
             void operator=(T*) = delete;
             GcPtr& operator=(decltype( nullptr )) { meta = 0; p = 0; return *this; }
-			bool operator<(const GcPtr& r) const { return *p < *r.p; }
+            bool operator<(const GcPtr& r) const { return *p < *r.p; }
 
             // Methods
 
@@ -149,16 +149,16 @@ namespace tgc
             T*  p;
         };
 
-		
-		template<typename T>
-		class gc : public GcPtr<T>
-		{
-			using base = GcPtr;
-		public:
-			using GcPtr::GcPtr;
-			gc(){}
-			gc(ObjMeta* o):base(o){}
-		};
+        
+        template<typename T>
+        class gc : public GcPtr<T>
+        {
+            using base = GcPtr;
+        public:
+            using GcPtr::GcPtr;
+            gc(){}
+            gc(ObjMeta* o):base(o){}
+        };
 
 
 
@@ -185,14 +185,14 @@ namespace tgc
         template<typename T>
         ClassInfo* ClassInfo::get()
         {
-            auto destroy = [](ClassInfo* cls, void* mem) { 					
-				auto obj = (T*)mem;
-				obj->~T();
-				delete[](char*)obj; 
-			};
+            auto destroy = [](ClassInfo* cls, void* mem) {                  
+                auto obj = (T*)mem;
+                obj->~T();
+                delete[](char*)obj; 
+            };
             auto enumPtrs = [](ClassInfo* cls, char* o) { 
-				return ( IPtrEnumerator* ) new PtrEnumerator<T>(cls, o); 
-			};
+                return ( IPtrEnumerator* ) new PtrEnumerator<T>(cls, o); 
+            };
             static ClassInfo i{ destroy, sizeof(T), enumPtrs };
             return &i;
         }
@@ -425,24 +425,24 @@ namespace tgc
     using details::gc_new_vector;
     using details::gc_new_map;
     using details::gc_new_unordered_map;    
-	using details::gc_new_set;
+    using details::gc_new_set;
 
 
 #define GC_AUTO_BOX(T)\
-	template<> \
-	class gc<T> : public details::GcPtr<T> \
-	{ \
-	public: \
-		using GcPtr::GcPtr; \
-		gc(T i): GcPtr(gc_new<T>(i)) {} \
-		gc() {} \
-		operator T& () { return GcPtr::operator*(); } \
-	};	
+    template<> \
+    class gc<T> : public details::GcPtr<T> \
+    { \
+    public: \
+        using GcPtr::GcPtr; \
+        gc(T i): GcPtr(gc_new<T>(i)) {} \
+        gc() {} \
+        operator T& () { return GcPtr::operator*(); } \
+    };  
 
-	GC_AUTO_BOX(int);
-	GC_AUTO_BOX(float);
-	GC_AUTO_BOX(std::string);
+    GC_AUTO_BOX(int);
+    GC_AUTO_BOX(float);
+    GC_AUTO_BOX(std::string);
 
-	using gc_string = gc<std::string>;
+    using gc_string = gc<std::string>;
 }
 
