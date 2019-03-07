@@ -4,6 +4,8 @@
 
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
+Warning: This project is only used in small products without heavy tests, take your own risk. 
+
 参考请注明出处，谢谢。
 
 ### Hightlights
