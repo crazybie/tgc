@@ -1,6 +1,6 @@
 # TGC
 
-## A Tiny incremental mark & sweep Garbage Collector.
+## A __T__iny incremental mark & sweep __G__arbage __C__ollector.
 
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
@@ -23,7 +23,7 @@ Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framewo
     - easier to integrate.
 - Can work with your own memory manage system
     - TGC only takes over the collecting task.
-    - can even works with std::shared_ptr, memory pool, etc.
+    - can even works with std::shared_ptr, memory pool, etc. (TBD)
     
 
 ### TODO
