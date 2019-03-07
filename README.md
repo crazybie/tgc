@@ -1,6 +1,6 @@
 # TGC
 
-## A __T__iny incremental mark & sweep __G__arbage __C__ollector.
+## A Tiny incremental mark & sweep Garbage Collector.
 
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
