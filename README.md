@@ -4,6 +4,7 @@
 
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
+参考请注明出处，谢谢。
 
 ### Hightlights
 - Auto discovery memory relations *without any extra code*
