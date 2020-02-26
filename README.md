@@ -19,12 +19,12 @@ Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framewo
 - Incremental marking and sweeping
     - won't stop the world.
     - can control the steps of each collecting call.
-- No other dependencies
+- Cross platform, No other dependencies
     - easier to integrate.
+    - only dependent on STL.
 - Can work with your own memory manage system
     - TGC only takes over the collecting task.
     - can even works with std::shared_ptr, memory pool, etc.
-    
 
 ### TODO
 - exception safe.
