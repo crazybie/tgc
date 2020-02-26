@@ -5,7 +5,7 @@
 namespace tgc {
 namespace details {
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0};
+ClassInfo ClassInfo::Empty{0, 0, 0, 0};
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0);
 
 class Impl {
@@ -112,8 +112,7 @@ class Impl {
         auto meta = p->meta;
         if (!meta)
           continue;
-        for (auto i = meta->clsInfo->enumPtrs(meta->clsInfo, meta->objPtr);
-             i->hasNext();) {
+        for (auto i = meta->clsInfo->enumPtrs(meta); i->hasNext();) {
           i->getNext()->isRoot = 0;
         }
         tryMarkRoot(p);
@@ -133,8 +132,7 @@ class Impl {
         o->markState = ObjMeta::Alive;
 
         auto cls = o->clsInfo;
-        for (auto it = cls->enumPtrs(cls, o->objPtr); it->hasNext();
-             stepCnt--) {
+        for (auto it = cls->enumPtrs(o); it->hasNext(); stepCnt--) {
           auto* ptr = it->getNext();
           auto* meta = ptr->meta;
           if (meta->markState == ObjMeta::Unmarked) {
@@ -194,17 +192,20 @@ void PtrBase::onPtrChanged() {
   Impl::get()->onPointeeChanged(this);
 }
 
-ObjMeta* ClassInfo::allocObj() {
-  auto buf = new char[size];
-  auto meta = new ObjMeta(this, buf);
+// construct meta before object construction to ensure
+// member pointers can find the owner.
+ObjMeta* ClassInfo::newMeta(int objCnt) {
+  // allocate memory ahead of time to get a valid address for owner finding.
+  auto o = alloc(this, objCnt);
+  auto meta = new ObjMeta(this, o);
   Impl::get()->metaSet.insert(meta);
   return meta;
 }
 
-void ClassInfo::registerSubPtr(ObjMeta* meta, PtrBase* p) {
+void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   if (state == ClassInfo::State::Registered)
     return;
-  auto offset = (char*)p - (char*)meta->objPtr;
+  auto offset = (char*)p - (char*)owner->objPtr;
   subPtrOffsets.push_back(offset);
 }
 

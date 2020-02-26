@@ -55,9 +55,11 @@ class IPtrEnumerator {
 class ClassInfo {
  public:
   enum class State : char { Unregistered, Registered };
-  typedef void (*Dealloc)(ClassInfo* cls, void* obj);
-  typedef IPtrEnumerator* (*EnumPtrs)(ClassInfo* cls, char*);
+  typedef char* (*Alloc)(ClassInfo* cls, int cnt);
+  typedef void (*Dealloc)(ObjMeta* meta);
+  typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
+  Alloc alloc;
   Dealloc dctor;
   EnumPtrs enumPtrs;
   size_t size;
@@ -66,10 +68,11 @@ class ClassInfo {
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(Dealloc d, int sz, EnumPtrs e)
-      : dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
-  ObjMeta* allocObj();
+  ClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e)
+      : alloc(a), dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
+
   bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
+  ObjMeta* newMeta(int objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
 
   template <typename T>
@@ -83,19 +86,20 @@ class ObjMeta {
   ClassInfo* clsInfo;
   char* objPtr;
   MarkColor markState;
+  int arrayLength;
 
   struct Less {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
   explicit ObjMeta(ClassInfo* c, char* o)
-      : objPtr(o), clsInfo(c), markState(MarkColor::Unmarked) {}
+      : clsInfo(c), objPtr(o), markState(MarkColor::Unmarked), arrayLength(0) {}
 
   ~ObjMeta() {
     if (objPtr)
-      clsInfo->dctor(clsInfo, objPtr);
+      clsInfo->dctor(this);
   }
-
+  bool isArray() { return arrayLength > 0; }
   bool operator<(ObjMeta& r) const {
     return objPtr + clsInfo->size <= r.objPtr;
   }
@@ -194,26 +198,33 @@ template <typename C>
 class PtrEnumerator : public IPtrEnumerator {
  public:
   size_t i;
-  ClassInfo* cls;
-  char* o;
-  PtrEnumerator(ClassInfo* cls_, char* o_) : cls(cls_), o(o_), i(0) {}
-  bool hasNext() override { return i < cls->subPtrOffsets.size(); }
+  ObjMeta* meta;
+  PtrEnumerator(ObjMeta* meta_) : meta(meta_), i(0) {}
+  bool hasNext() override { return i < meta->clsInfo->subPtrOffsets.size(); }
   const PtrBase* getNext() override {
-    return (PtrBase*)(o + cls->subPtrOffsets[i++]);
+    return (PtrBase*)(meta->objPtr + meta->clsInfo->subPtrOffsets[i++]);
   }
 };
 
 template <typename T>
 ClassInfo* ClassInfo::get() {
-  auto destroy = [](ClassInfo* cls, void* mem) {
-    auto obj = (T*)mem;
-    obj->~T();
-    delete[](char*) obj;
+  auto alloc = [](ClassInfo* cls, int cnt) {
+    return new char[cls->size * cnt];
   };
-  auto enumPtrs = [](ClassInfo* cls, char* o) {
-    return (IPtrEnumerator*)new PtrEnumerator<T>(cls, o);
+  auto destroy = [](ObjMeta* meta) {
+    auto* p = (T*)meta->objPtr;
+    if (meta->isArray()) {
+      for (int i = 0; i < meta->arrayLength; i++, p++)
+        p->~T();
+    } else {
+      p->~T();
+    }
+    delete[] meta->objPtr;
   };
-  static ClassInfo i{destroy, sizeof(T), enumPtrs};
+  auto enumPtrs = [](ObjMeta* meta) {
+    return (IPtrEnumerator*)new PtrEnumerator<T>(meta);
+  };
+  static ClassInfo i{alloc, destroy, sizeof(T), enumPtrs};
   return &i;
 }
 
@@ -221,8 +232,22 @@ template <typename T, typename... Args>
 gc<T> gc_new(Args&&... args) {
   ClassInfo* cls = ClassInfo::get<T>();
   cls->isCreatingObj++;
-  auto* meta = cls->allocObj();
+  auto* meta = cls->newMeta(1);
   new (meta->objPtr) T(forward<Args>(args)...);
+  cls->state = ClassInfo::State::Registered;
+  cls->isCreatingObj--;
+  return meta;
+}
+
+template <typename T, typename... Args>
+gc<T> gc_new_array(int len, Args&&... args) {
+  ClassInfo* cls = ClassInfo::get<T>();
+  cls->isCreatingObj++;
+  auto* meta = cls->newMeta(len);
+  auto* p = (T*)meta->objPtr;
+  for (int i = 0; i < len; i++, p++)
+    new (p) T(forward<Args>(args)...);
+  meta->arrayLength = len;
   cls->state = ClassInfo::State::Registered;
   cls->isCreatingObj--;
   return meta;
@@ -237,9 +262,7 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
  public:
   C* o;
   typename C::iterator it;
-  ContainerPtrEnumerator(ClassInfo* cls, char* o_) : o((C*)o_) {
-    it = o->begin();
-  }
+  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr) { it = o->begin(); }
   bool hasNext() override { return it != o->end(); }
 };
 
