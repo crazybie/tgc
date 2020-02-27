@@ -95,8 +95,7 @@ class Impl {
     DummyMetaInfo.objPtr = (char*)obj;
     auto i = metaSet.lower_bound(&DummyMetaInfo);
     DummyMetaInfo.objPtr = 0;
-    if (i == metaSet.end() ||
-        !(*i)->clsInfo->containsPtr((*i)->objPtr, (char*)obj)) {
+    if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
       return 0;
     }
     return *i;
@@ -195,9 +194,10 @@ void PtrBase::onPtrChanged() {
 // construct meta before object construction to ensure
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
-  // allocate memory ahead of time to get a valid address for owner finding.
+  // allocate memory & meta ahead of time for owner meta finding.
   auto o = alloc(this, objCnt);
   auto meta = new ObjMeta(this, o);
+  meta->arrayLength = objCnt;
   Impl::get()->metaSet.insert(meta);
   return meta;
 }

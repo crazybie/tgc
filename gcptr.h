@@ -71,9 +71,13 @@ class ClassInfo {
   ClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e)
       : alloc(a), dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
 
-  bool containsPtr(char* obj, char* p) { return obj <= p && p < obj + size; }
   ObjMeta* newMeta(int objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
+  void beginObjCreating() { isCreatingObj++; }
+  void endObjCreating() {
+    isCreatingObj--;
+    state = ClassInfo::State::Registered;
+  }
 
   template <typename T>
   static ClassInfo* get();
@@ -85,23 +89,25 @@ class ObjMeta {
 
   ClassInfo* clsInfo;
   char* objPtr;
+  size_t arrayLength;
   MarkColor markState;
-  int arrayLength;
 
   struct Less {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
-  explicit ObjMeta(ClassInfo* c, char* o)
+  ObjMeta(ClassInfo* c, char* o)
       : clsInfo(c), objPtr(o), markState(MarkColor::Unmarked), arrayLength(0) {}
 
   ~ObjMeta() {
     if (objPtr)
       clsInfo->dctor(this);
   }
-  bool isArray() { return arrayLength > 0; }
   bool operator<(ObjMeta& r) const {
-    return objPtr + clsInfo->size <= r.objPtr;
+    return objPtr + clsInfo->size * arrayLength <= r.objPtr;
+  }
+  bool containsPtr(char* p) {
+    return objPtr <= p && p < objPtr + clsInfo->size * arrayLength;
   }
 };
 
@@ -197,12 +203,22 @@ gc<T> gc_from(T* t) {
 template <typename C>
 class PtrEnumerator : public IPtrEnumerator {
  public:
-  size_t i;
+  size_t subPtrIdx, arrayElemIdx;
   ObjMeta* meta;
-  PtrEnumerator(ObjMeta* meta_) : meta(meta_), i(0) {}
-  bool hasNext() override { return i < meta->clsInfo->subPtrOffsets.size(); }
+
+  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
+
+  bool hasNext() override {
+    return arrayElemIdx < meta->arrayLength &&
+           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+  }
   const PtrBase* getNext() override {
-    return (PtrBase*)(meta->objPtr + meta->clsInfo->subPtrOffsets[i++]);
+    auto* clsInfo = meta->clsInfo;
+    auto* obj = meta->objPtr + arrayElemIdx * clsInfo->size;
+    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
+    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+      arrayElemIdx++;
+    return (PtrBase*)subPtr;
   }
 };
 
@@ -213,16 +229,12 @@ ClassInfo* ClassInfo::get() {
   };
   auto destroy = [](ObjMeta* meta) {
     auto* p = (T*)meta->objPtr;
-    if (meta->isArray()) {
-      for (int i = 0; i < meta->arrayLength; i++, p++)
-        p->~T();
-    } else {
+    for (size_t i = 0; i < meta->arrayLength; i++, p++)
       p->~T();
-    }
     delete[] meta->objPtr;
   };
-  auto enumPtrs = [](ObjMeta* meta) {
-    return (IPtrEnumerator*)new PtrEnumerator<T>(meta);
+  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
+    return new PtrEnumerator<T>(meta);
   };
   static ClassInfo i{alloc, destroy, sizeof(T), enumPtrs};
   return &i;
@@ -231,25 +243,22 @@ ClassInfo* ClassInfo::get() {
 template <typename T, typename... Args>
 gc<T> gc_new(Args&&... args) {
   ClassInfo* cls = ClassInfo::get<T>();
-  cls->isCreatingObj++;
+  cls->beginObjCreating();
   auto* meta = cls->newMeta(1);
   new (meta->objPtr) T(forward<Args>(args)...);
-  cls->state = ClassInfo::State::Registered;
-  cls->isCreatingObj--;
+  cls->endObjCreating();
   return meta;
 }
 
 template <typename T, typename... Args>
-gc<T> gc_new_array(int len, Args&&... args) {
+gc<T> gc_new_array(size_t len, Args&&... args) {
   ClassInfo* cls = ClassInfo::get<T>();
-  cls->isCreatingObj++;
+  cls->beginObjCreating();
   auto* meta = cls->newMeta(len);
   auto* p = (T*)meta->objPtr;
-  for (int i = 0; i < len; i++, p++)
+  for (size_t i = 0; i < len; i++, p++)
     new (p) T(forward<Args>(args)...);
-  meta->arrayLength = len;
-  cls->state = ClassInfo::State::Registered;
-  cls->isCreatingObj--;
+  cls->endObjCreating();
   return meta;
 }
 
@@ -267,6 +276,9 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
 };
 
 /// ============= Vector ================
+
+// vector elements are not stored contiguously due to implementation
+// limitation. use gc_new_array for better performance.
 
 template <typename T>
 class gc_vector : public gc<vector<gc<T>>> {
