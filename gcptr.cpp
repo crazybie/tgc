@@ -19,10 +19,15 @@ class Impl {
   size_t nextRootMarking;
   MetaSet::iterator nextSweeping;
   State state;
+  vector<ClassInfo*> classInfos;
 
   Impl() : state(State::RootMarking), nextRootMarking(0) {}
 
-  ~Impl() { collect(INT_MAX); }
+  ~Impl() {
+    collect(INT_MAX);
+    for (auto i : classInfos)
+      delete i;
+  }
 
   static Impl* get() {
     static Impl i;
@@ -134,6 +139,8 @@ class Impl {
         for (auto it = cls->enumPtrs(o); it->hasNext(); stepCnt--) {
           auto* ptr = it->getNext();
           auto* meta = ptr->meta;
+          if (!meta)
+            continue;
           if (meta->markState == ObjMeta::Unmarked) {
             grayObjs.push_back(meta);
           }
@@ -207,6 +214,12 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
     return;
   auto offset = (char*)p - (char*)owner->objPtr;
   subPtrOffsets.push_back(offset);
+}
+
+ClassInfo* ClassInfo::newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e) {
+  auto r = new ClassInfo(a, d, sz, e);
+  Impl::get()->classInfos.push_back(r);
+  return r;
 }
 
 void* IPtrEnumerator::operator new(size_t sz) {

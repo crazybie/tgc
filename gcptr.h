@@ -13,15 +13,12 @@
 
 #pragma once
 
-// TODO: fix crash when enable iterator debugging
-#define _ITERATOR_DEBUG_LEVEL 0
-#include <vector>
-
 #include <deque>
 #include <list>
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 namespace tgc {
 namespace details {
@@ -29,20 +26,7 @@ using namespace std;
 
 class Impl;
 class ObjMeta;
-
-class PtrBase {
-  friend class tgc::details::Impl;
-
- protected:
-  mutable unsigned int isRoot : 1;
-  unsigned int index : 31;
-  ObjMeta* meta;
-
-  PtrBase();
-  PtrBase(void* obj);
-  ~PtrBase();
-  void onPtrChanged();
-};
+class PtrBase;
 
 class IPtrEnumerator {
  public:
@@ -81,6 +65,7 @@ class ClassInfo {
 
   template <typename T>
   static ClassInfo* get();
+  static ClassInfo* newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e);
 };
 
 class ObjMeta {
@@ -111,10 +96,25 @@ class ObjMeta {
   }
 };
 
+class PtrBase {
+  friend class tgc::details::Impl;
+
+ protected:
+  mutable unsigned int isRoot : 1;
+  unsigned int index : 31;
+  ObjMeta* meta;
+
+  PtrBase();
+  PtrBase(void* obj);
+  ~PtrBase();
+  void onPtrChanged();
+};
+
 template <typename T>
 class GcPtr : public PtrBase {
  public:
   typedef T pointee;
+  typedef T element_type;
   template <typename U>
   friend class GcPtr;
 
@@ -185,11 +185,12 @@ class GcPtr : public PtrBase {
 
 template <typename T>
 class gc : public GcPtr<T> {
-  using base = GcPtr;
+  using base = GcPtr<T>;
 
  public:
-  using GcPtr::GcPtr;
+  using GcPtr<T>::GcPtr;
   gc() {}
+  gc(nullptr_t) {}
   gc(ObjMeta* o) : base(o) {}
 };
 
@@ -198,6 +199,11 @@ void gc_collect(int steps);
 template <typename T>
 gc<T> gc_from(T* t) {
   return gc<T>(t);
+}
+
+template <typename To, typename From>
+gc<To> gc_static_pointer_cast(gc<From>& from) {
+  return gc<To>((To*)from.operator->());
 }
 
 template <typename C>
@@ -236,8 +242,8 @@ ClassInfo* ClassInfo::get() {
   auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
     return new PtrEnumerator<T>(meta);
   };
-  static ClassInfo i{alloc, destroy, sizeof(T), enumPtrs};
-  return &i;
+  static ClassInfo* i = newClassInfo(alloc, destroy, sizeof(T), enumPtrs);
+  return i;
 }
 
 template <typename T, typename... Args>
@@ -283,16 +289,16 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
 template <typename T>
 class gc_vector : public gc<vector<gc<T>>> {
  public:
-  using gc::gc;
-  gc<T>& operator[](int idx) { return (*p)[idx]; }
+  using gc<T>::gc;
+  gc<T>& operator[](int idx) { return (*this)[idx]; }
 };
 
 template <typename T>
 class PtrEnumerator<vector<gc<T>>>
     : public ContainerPtrEnumerator<vector<gc<T>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
-  const PtrBase* getNext() override { return &*it++; }
+  using ContainerPtrEnumerator<vector<gc<T>>>::ContainerPtrEnumerator;
+  const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
@@ -305,16 +311,16 @@ gc_vector<T> gc_new_vector(Args&&... args) {
 template <typename T>
 class gc_deque : public gc<deque<gc<T>>> {
  public:
-  using gc::gc;
-  gc<T>& operator[](int idx) { return (*p)[idx]; }
+  using gc<deque<gc<T>>>::gc;
+  gc<T>& operator[](int idx) { return (*this)[idx]; }
 };
 
 template <typename T>
 class PtrEnumerator<deque<gc<T>>>
     : public ContainerPtrEnumerator<deque<gc<T>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
-  const PtrBase* getNext() override { return &*it++; }
+  using ContainerPtrEnumerator<deque<gc<T>>>::ContainerPtrEnumerator;
+  const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
@@ -333,11 +339,18 @@ class gc_func<R(A...)> {
   gc_func() {}
 
   template <typename F>
+  gc_func(F&& f) {
+    *this = f;
+  }
+
+  template <typename F>
   void operator=(F& f) {
     callable = gc_new<Imp<F>>(f);
   }
 
+  R operator()(A... a) const { return callable->call(a...); }
   R operator()(A... a) { return callable->call(a...); }
+  explicit operator bool() const { return (bool)callable; }
 
  private:
   class Callable {
@@ -365,8 +378,8 @@ using gc_list = gc<list<gc<T>>>;
 template <typename T>
 class PtrEnumerator<list<gc<T>>> : public ContainerPtrEnumerator<list<gc<T>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
-  const PtrBase* getNext() override { return &*it++; }
+  using ContainerPtrEnumerator<list<gc<T>>>::ContainerPtrEnumerator;
+  const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
@@ -381,18 +394,18 @@ gc_list<T> gc_new_list(Args&&... args) {
 template <typename K, typename V>
 class gc_map : public gc<map<K, gc<V>>> {
  public:
-  using gc::gc;
-  gc<V>& operator[](const K& k) { return (*p)[k]; }
+  using gc<map<K, gc<V>>>::gc;
+  gc<V>& operator[](const K& k) { return (*this)[k]; }
 };
 
 template <typename K, typename V>
 class PtrEnumerator<map<K, gc<V>>>
     : public ContainerPtrEnumerator<map<K, gc<V>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
+  using ContainerPtrEnumerator<map<K, gc<V>>>::ContainerPtrEnumerator;
   const PtrBase* getNext() override {
-    auto* ret = &it->second;
-    ++it;
+    auto* ret = &this->it->second;
+    ++this->it;
     return ret;
   }
 };
@@ -409,18 +422,18 @@ gc_map<K, V> gc_new_map(Args&&... args) {
 template <typename K, typename V>
 class gc_unordered_map : public gc<unordered_map<K, gc<V>>> {
  public:
-  using gc::gc;
-  gc<V>& operator[](const K& k) { return (*p)[k]; }
+  using gc<unordered_map<K, gc<V>>>::gc;
+  gc<V>& operator[](const K& k) { return (*this)[k]; }
 };
 
 template <typename K, typename V>
 class PtrEnumerator<unordered_map<K, gc<V>>>
     : public ContainerPtrEnumerator<unordered_map<K, gc<V>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
+  using ContainerPtrEnumerator<unordered_map<K, gc<V>>>::ContainerPtrEnumerator;
   const PtrBase* getNext() override {
-    auto* ret = &it->second;
-    ++it;
+    auto* ret = &this->it->second;
+    ++this->it;
     return ret;
   }
 };
@@ -438,8 +451,8 @@ using gc_set = gc<set<gc<V>>>;
 template <typename V>
 class PtrEnumerator<set<gc<V>>> : public ContainerPtrEnumerator<set<gc<V>>> {
  public:
-  using ContainerPtrEnumerator::ContainerPtrEnumerator;
-  const PtrBase* getNext() override { return &*it++; }
+  using ContainerPtrEnumerator<set<gc<V>>>::ContainerPtrEnumerator;
+  const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename V, typename... Args>
@@ -462,6 +475,7 @@ using details::gc_vector;
 using details::gc_collect;
 using details::gc_from;
 using details::gc_new;
+using details::gc_static_pointer_cast;
 
 using details::gc_new_deque;
 using details::gc_new_list;
