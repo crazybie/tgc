@@ -28,12 +28,16 @@ class Impl;
 class ObjMeta;
 class PtrBase;
 
+//////////////////////////////////////////////////////////////////////////
+
 class IPtrEnumerator {
  public:
   virtual ~IPtrEnumerator() {}
   virtual bool hasNext() = 0;
   virtual const PtrBase* getNext() = 0;
 };
+
+//////////////////////////////////////////////////////////////////////////
 
 class ClassInfo {
  public:
@@ -48,6 +52,7 @@ class ClassInfo {
   size_t size;
   vector<int> subPtrOffsets;
   State state;
+
   static int isCreatingObj;
   static ClassInfo Empty;
 
@@ -66,6 +71,8 @@ class ClassInfo {
   static ClassInfo* get();
   static ClassInfo* newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e);
 };
+
+//////////////////////////////////////////////////////////////////////////
 
 class ObjMeta {
  public:
@@ -95,8 +102,10 @@ class ObjMeta {
   }
 };
 
+//////////////////////////////////////////////////////////////////////////
+
 class PtrBase {
-  friend class tgc::details::Impl;
+  friend class Impl;
 
  protected:
   mutable unsigned int isRoot : 1;
@@ -109,11 +118,14 @@ class PtrBase {
   void onPtrChanged();
 };
 
+//////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 class GcPtr : public PtrBase {
  public:
   typedef T pointee;
-  typedef T element_type;
+  typedef T element_type;  // compatible with std::shared_ptr
+
   template <typename U>
   friend class GcPtr;
 
@@ -182,6 +194,8 @@ class GcPtr : public PtrBase {
   T* p;
 };
 
+//////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 class gc : public GcPtr<T> {
   using base = GcPtr<T>;
@@ -193,6 +207,20 @@ class gc : public GcPtr<T> {
   gc(ObjMeta* o) : base(o) {}
 };
 
+#define GC_DECL_AUTO_BOX(T)                     \
+  template <>                                   \
+  class gc<T> : public details::GcPtr<T> {      \
+   public:                                      \
+    using GcPtr::GcPtr;                         \
+    gc(const T& i) : GcPtr(gc_new<T>(i)) {}     \
+    gc() {}                                     \
+    gc(nullptr_t) {}                            \
+    operator T&() { return operator*(); }       \
+    operator T&() const { return operator*(); } \
+  };
+
+//////////////////////////////////////////////////////////////////////////
+
 void gc_collect(int steps);
 
 template <typename T>
@@ -200,49 +228,10 @@ gc<T> gc_from(T* t) {
   return gc<T>(t);
 }
 
+// compatible with std::shared_ptr
 template <typename To, typename From>
 gc<To> gc_static_pointer_cast(gc<From>& from) {
   return gc<To>((To*)from.operator->());
-}
-
-template <typename C>
-class PtrEnumerator : public IPtrEnumerator {
- public:
-  size_t subPtrIdx, arrayElemIdx;
-  ObjMeta* meta;
-
-  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
-
-  bool hasNext() override {
-    return arrayElemIdx < meta->arrayLength &&
-           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
-  }
-  const PtrBase* getNext() override {
-    auto* clsInfo = meta->clsInfo;
-    auto* obj = meta->objPtr + arrayElemIdx * clsInfo->size;
-    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
-    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
-      arrayElemIdx++;
-    return (PtrBase*)subPtr;
-  }
-};
-
-template <typename T>
-ClassInfo* ClassInfo::get() {
-  auto alloc = [](ClassInfo* cls, int cnt) {
-    return new char[cls->size * cnt];
-  };
-  auto destroy = [](ObjMeta* meta) {
-    auto* p = (T*)meta->objPtr;
-    for (size_t i = 0; i < meta->arrayLength; i++, p++)
-      p->~T();
-    delete[] meta->objPtr;
-  };
-  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
-    return new PtrEnumerator<T>(meta);
-  };
-  static ClassInfo* i = newClassInfo(alloc, destroy, sizeof(T), enumPtrs);
-  return i;
 }
 
 template <typename T, typename... Args>
@@ -267,9 +256,53 @@ gc<T> gc_new_array(size_t len, Args&&... args) {
   return meta;
 }
 
-//=================================================================================================
+//////////////////////////////////////////////////////////////////////////
+
+template <typename C>
+class PtrEnumerator : public IPtrEnumerator {
+ public:
+  size_t subPtrIdx, arrayElemIdx;
+  ObjMeta* meta;
+
+  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
+
+  bool hasNext() override {
+    return arrayElemIdx < meta->arrayLength &&
+           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+  }
+  const PtrBase* getNext() override {
+    auto* clsInfo = meta->clsInfo;
+    auto* obj = meta->objPtr + arrayElemIdx * clsInfo->size;
+    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
+    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+      arrayElemIdx++;
+    return (PtrBase*)subPtr;
+  }
+};
+
+//////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+ClassInfo* ClassInfo::get() {
+  auto alloc = [](ClassInfo* cls, int cnt) {
+    return new char[cls->size * cnt];
+  };
+  auto destroy = [](ObjMeta* meta) {
+    auto* p = (T*)meta->objPtr;
+    for (size_t i = 0; i < meta->arrayLength; i++, p++)
+      p->~T();
+    delete[] meta->objPtr;
+  };
+  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
+    return new PtrEnumerator<T>(meta);
+  };
+  static ClassInfo* i = newClassInfo(alloc, destroy, sizeof(T), enumPtrs);
+  return i;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Wrap STL Containers
-//=================================================================================================
+//////////////////////////////////////////////////////////////////////////
 
 template <typename C>
 class ContainerPtrEnumerator : public IPtrEnumerator {
@@ -280,10 +313,10 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
   bool hasNext() override { return it != o->end(); }
 };
 
-/// ============= Vector ================
-
-// vector elements are not stored contiguously due to implementation
-// limitation. use gc_new_array for better performance.
+//////////////////////////////////////////////////////////////////////////
+/// Vector
+/// vector elements are not stored contiguously due to implementation
+/// limitation. use gc_new_array for better performance.
 
 template <typename T>
 class gc_vector : public gc<vector<gc<T>>> {
@@ -305,7 +338,8 @@ gc_vector<T> gc_new_vector(Args&&... args) {
   return gc_new<vector<gc<T>>>(forward<Args>(args)...);
 }
 
-/// ============= Deque ================
+//////////////////////////////////////////////////////////////////////////
+/// Deque
 
 template <typename T>
 class gc_deque : public gc<deque<gc<T>>> {
@@ -326,19 +360,19 @@ template <typename T, typename... Args>
 gc_deque<T> gc_new_deque(Args&&... args) {
   return gc_new<deque<gc<T>>>(forward<Args>(args)...);
 }
-
-// ========= function ================================
+//////////////////////////////////////////////////////////////////////////
+/// Function
 
 template <typename T>
-class gc_func;
+class gc_function;
 
 template <typename R, typename... A>
-class gc_func<R(A...)> {
+class gc_function<R(A...)> {
  public:
-  gc_func() {}
+  gc_function() {}
 
   template <typename F>
-  gc_func(F&& f) {
+  gc_function(F&& f) {
     *this = f;
   }
 
@@ -369,7 +403,8 @@ class gc_func<R(A...)> {
   };
 };
 
-/// ============= List ================
+//////////////////////////////////////////////////////////////////////////
+/// List
 
 template <typename T>
 using gc_list = gc<list<gc<T>>>;
@@ -386,9 +421,9 @@ gc_list<T> gc_new_list(Args&&... args) {
   return gc_new<list<gc<T>>>(forward<Args>(args)...);
 }
 
-/// ============= Map ================
-
-// TODO: NOT support using gc object as key...
+//////////////////////////////////////////////////////////////////////////
+/// Map
+/// TODO: NOT support using gc object as key...
 
 template <typename K, typename V>
 class gc_map : public gc<map<K, gc<V>>> {
@@ -414,9 +449,9 @@ gc_map<K, V> gc_new_map(Args&&... args) {
   return gc_new<map<K, gc<V>>>(forward<Args>(args)...);
 }
 
-/// ============= HashMap ================
-
-// NOT support using gc object as key...
+//////////////////////////////////////////////////////////////////////////
+/// HashMap
+/// TODO: NOT support using gc object as key...
 
 template <typename K, typename V>
 class gc_unordered_map : public gc<unordered_map<K, gc<V>>> {
@@ -442,7 +477,8 @@ gc_unordered_map<K, V> gc_new_unordered_map(Args&&... args) {
   return gc_new<unordered_map<K, gc<V>>>(forward<Args>(args)...);
 }
 
-/// ============= Set ================
+//////////////////////////////////////////////////////////////////////////
+/// Set
 
 template <typename V>
 using gc_set = gc<set<gc<V>>>;
@@ -460,43 +496,48 @@ gc_set<V> gc_new_set(Args&&... args) {
 }
 }  // namespace details
 
-// ================ Public APIs =======================
+//////////////////////////////////////////////////////////////////////////
+// Public APIs
 
 using details::gc;
-using details::gc_deque;
-using details::gc_func;
-using details::gc_list;
-using details::gc_map;
-using details::gc_set;
-using details::gc_unordered_map;
-using details::gc_vector;
-
 using details::gc_collect;
 using details::gc_from;
 using details::gc_new;
+using details::gc_new_array;
 using details::gc_static_pointer_cast;
 
+using details::gc_deque;
 using details::gc_new_deque;
+
+using details::gc_function;
+
+using details::gc_list;
 using details::gc_new_list;
+
+using details::gc_map;
 using details::gc_new_map;
+
 using details::gc_new_set;
+using details::gc_set;
+
 using details::gc_new_unordered_map;
+using details::gc_unordered_map;
+
 using details::gc_new_vector;
+using details::gc_vector;
 
-#define GC_AUTO_BOX(T)                           \
-  template <>                                    \
-  class gc<T> : public details::GcPtr<T> {       \
-   public:                                       \
-    using GcPtr::GcPtr;                          \
-    gc(T i) : GcPtr(gc_new<T>(i)) {}             \
-    gc() {}                                      \
-    gc(nullptr_t) {}                             \
-    operator T&() { return GcPtr::operator*(); } \
-  };
-
-GC_AUTO_BOX(int);
-GC_AUTO_BOX(float);
-GC_AUTO_BOX(std::string);
+GC_DECL_AUTO_BOX(char);
+GC_DECL_AUTO_BOX(unsigned char);
+GC_DECL_AUTO_BOX(short);
+GC_DECL_AUTO_BOX(unsigned short);
+GC_DECL_AUTO_BOX(int);
+GC_DECL_AUTO_BOX(unsigned int);
+GC_DECL_AUTO_BOX(float);
+GC_DECL_AUTO_BOX(double);
+GC_DECL_AUTO_BOX(long);
+GC_DECL_AUTO_BOX(unsigned long);
+GC_DECL_AUTO_BOX(std::string);
 
 using gc_string = gc<std::string>;
+
 }  // namespace tgc

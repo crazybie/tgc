@@ -268,7 +268,7 @@ void testHashMap() {
 }
 
 void testLambda() {
-  gc_func<int()> ff;
+  gc_function<int()> ff;
   {
     auto l = gc_new<int>(1);
     auto f = [=] { return *l; };
