@@ -33,7 +33,6 @@ class IPtrEnumerator {
   virtual ~IPtrEnumerator() {}
   virtual bool hasNext() = 0;
   virtual const PtrBase* getNext() = 0;
-  void* operator new(size_t);
 };
 
 class ClassInfo {
@@ -289,8 +288,8 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
 template <typename T>
 class gc_vector : public gc<vector<gc<T>>> {
  public:
-  using gc<T>::gc;
-  gc<T>& operator[](int idx) { return (*this)[idx]; }
+  using gc<vector<gc<T>>>::gc;
+  gc<T>& operator[](int idx) { return (*this->p)[idx]; }
 };
 
 template <typename T>
@@ -312,7 +311,7 @@ template <typename T>
 class gc_deque : public gc<deque<gc<T>>> {
  public:
   using gc<deque<gc<T>>>::gc;
-  gc<T>& operator[](int idx) { return (*this)[idx]; }
+  gc<T>& operator[](int idx) { return (*this->p)[idx]; }
 };
 
 template <typename T>
@@ -395,7 +394,7 @@ template <typename K, typename V>
 class gc_map : public gc<map<K, gc<V>>> {
  public:
   using gc<map<K, gc<V>>>::gc;
-  gc<V>& operator[](const K& k) { return (*this)[k]; }
+  gc<V>& operator[](const K& k) { return (*this->p)[k]; }
 };
 
 template <typename K, typename V>
@@ -423,7 +422,7 @@ template <typename K, typename V>
 class gc_unordered_map : public gc<unordered_map<K, gc<V>>> {
  public:
   using gc<unordered_map<K, gc<V>>>::gc;
-  gc<V>& operator[](const K& k) { return (*this)[k]; }
+  gc<V>& operator[](const K& k) { return (*this->p)[k]; }
 };
 
 template <typename K, typename V>
@@ -491,6 +490,7 @@ using details::gc_new_vector;
     using GcPtr::GcPtr;                          \
     gc(T i) : GcPtr(gc_new<T>(i)) {}             \
     gc() {}                                      \
+    gc(nullptr_t) {}                             \
     operator T&() { return GcPtr::operator*(); } \
   };
 

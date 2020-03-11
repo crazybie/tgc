@@ -116,9 +116,11 @@ class Impl {
         auto meta = p->meta;
         if (!meta)
           continue;
-        for (auto i = meta->clsInfo->enumPtrs(meta); i->hasNext();) {
-          i->getNext()->isRoot = 0;
+        auto it = meta->clsInfo->enumPtrs(meta);
+        for (; it->hasNext();) {
+          it->getNext()->isRoot = 0;
         }
+        delete it;
         tryMarkRoot(p);
       }
       if (nextRootMarking >= pointers.size()) {
@@ -136,7 +138,8 @@ class Impl {
         o->markState = ObjMeta::Alive;
 
         auto cls = o->clsInfo;
-        for (auto it = cls->enumPtrs(o); it->hasNext(); stepCnt--) {
+        auto it = cls->enumPtrs(o);
+        for (; it->hasNext(); stepCnt--) {
           auto* ptr = it->getNext();
           auto* meta = ptr->meta;
           if (!meta)
@@ -145,6 +148,7 @@ class Impl {
             grayObjs.push_back(meta);
           }
         }
+        delete it;
       }
       if (!grayObjs.size()) {
         state = State::Sweeping;
@@ -222,9 +226,5 @@ ClassInfo* ClassInfo::newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e) {
   return r;
 }
 
-void* IPtrEnumerator::operator new(size_t sz) {
-  static char buf[255];
-  return sz < sizeof(buf) ? buf : nullptr;
-}
 }  // namespace details
 }  // namespace tgc
