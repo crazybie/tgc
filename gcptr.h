@@ -13,20 +13,40 @@
 
 #pragma once
 
+#include <cassert>
+#include <climits>
 #include <deque>
 #include <list>
 #include <map>
 #include <set>
+#include <typeinfo>
 #include <unordered_map>
 #include <vector>
+
+#define TGC_DEBUG
 
 namespace tgc {
 namespace details {
 using namespace std;
 
-class Impl;
 class ObjMeta;
-class PtrBase;
+
+//////////////////////////////////////////////////////////////////////////
+
+class PtrBase {
+  friend class Collector;
+  friend class ClassInfo;
+
+ protected:
+  mutable unsigned int isRoot : 1;
+  unsigned int index : 31;
+  ObjMeta* meta;
+
+  PtrBase();
+  PtrBase(void* obj);
+  ~PtrBase();
+  void onPtrChanged();
+};
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -35,12 +55,6 @@ class IPtrEnumerator {
   virtual ~IPtrEnumerator() {}
   virtual bool hasNext() = 0;
   virtual const PtrBase* getNext() = 0;
-
-  void* operator new(size_t) {
-    static char buf[255];
-    return buf;
-  }
-  void operator delete(void*) {}
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -52,6 +66,7 @@ class ClassInfo {
   typedef void (*Dealloc)(ObjMeta* meta);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
+  const char* name;
   Alloc alloc;
   Dealloc dctor;
   EnumPtrs enumPtrs;
@@ -62,8 +77,13 @@ class ClassInfo {
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e)
-      : alloc(a), dctor(d), size(sz), enumPtrs(e), state(State::Unregistered) {}
+  ClassInfo(const char* name_, Alloc a, Dealloc d, int sz, EnumPtrs e)
+      : name(name_),
+        alloc(a),
+        dctor(d),
+        size(sz),
+        enumPtrs(e),
+        state(State::Unregistered) {}
 
   ObjMeta* newMeta(int objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
@@ -72,10 +92,23 @@ class ClassInfo {
     isCreatingObj--;
     state = ClassInfo::State::Registered;
   }
+  void destroy(ObjMeta* meta) {
+    auto i = enumPtrs(meta);
+    for (; i->hasNext();) {
+      auto* p = i->getNext();
+      p->~PtrBase();
+    }
+    delete i;
+    dctor(meta);
+  }
 
   template <typename T>
   static ClassInfo* get();
-  static ClassInfo* newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e);
+  static ClassInfo* newClassInfo(const char* name,
+                                 Alloc a,
+                                 Dealloc d,
+                                 int sz,
+                                 EnumPtrs e);
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -98,7 +131,7 @@ class ObjMeta {
 
   ~ObjMeta() {
     if (objPtr)
-      clsInfo->dctor(this);
+      clsInfo->destroy(this);
   }
   bool operator<(ObjMeta& r) const {
     return objPtr + clsInfo->size * arrayLength <= r.objPtr;
@@ -106,22 +139,6 @@ class ObjMeta {
   bool containsPtr(char* p) {
     return objPtr <= p && p < objPtr + clsInfo->size * arrayLength;
   }
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-class PtrBase {
-  friend class Impl;
-
- protected:
-  mutable unsigned int isRoot : 1;
-  unsigned int index : 31;
-  ObjMeta* meta;
-
-  PtrBase();
-  PtrBase(void* obj);
-  ~PtrBase();
-  void onPtrChanged();
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -227,11 +244,17 @@ class gc : public GcPtr<T> {
 
 //////////////////////////////////////////////////////////////////////////
 
-void gc_collect(int steps);
+void gc_collect(int steps = INT_MAX);
 
 template <typename T>
 gc<T> gc_from(T* t) {
   return gc<T>(t);
+}
+
+template <typename T>
+void gc_free(gc<T>& c) {
+  c->~T();
+  c = nullptr;
 }
 
 // compatible with std::shared_ptr
@@ -293,16 +316,16 @@ ClassInfo* ClassInfo::get() {
   auto alloc = [](ClassInfo* cls, int cnt) {
     return new char[cls->size * cnt];
   };
-  auto destroy = [](ObjMeta* meta) {
-    auto* p = (T*)meta->objPtr;
-    for (size_t i = 0; i < meta->arrayLength; i++, p++)
-      p->~T();
-    delete[] meta->objPtr;
-  };
+  auto destroy = [](ObjMeta* meta) { delete[] meta->objPtr; };
   auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
     return new PtrEnumerator<T>(meta);
   };
-  static ClassInfo* i = newClassInfo(alloc, destroy, sizeof(T), enumPtrs);
+  static ClassInfo* i =
+#ifdef TGC_DEBUG
+      newClassInfo(typeid(T).name(), alloc, destroy, sizeof(T), enumPtrs);
+#else
+      newClassInfo("", alloc, destroy, sizeof(T), enumPtrs);
+#endif
   return i;
 }
 
@@ -387,8 +410,11 @@ class gc_function<R(A...)> {
     callable = gc_new<Imp<F>>(f);
   }
 
-  R operator()(A... a) const { return callable->call(a...); }
-  R operator()(A... a) { return callable->call(a...); }
+  template <typename... U>
+  R operator()(U&&... a) const {
+    return callable->call(forward<U>(a)...);
+  }
+
   explicit operator bool() const { return (bool)callable; }
 
  private:
@@ -398,8 +424,6 @@ class gc_function<R(A...)> {
     virtual R call(A... a) = 0;
   };
 
-  gc<Callable> callable;
-
   template <typename F>
   class Imp : public Callable {
    public:
@@ -407,6 +431,9 @@ class gc_function<R(A...)> {
     Imp(F& ff) : f(ff) {}
     R call(A... a) override { return f(a...); }
   };
+
+ private:
+  gc<Callable> callable;
 };
 
 //////////////////////////////////////////////////////////////////////////

@@ -1,14 +1,15 @@
 #include "gcptr.h"
-#include <limits.h>
-#include <set>
+
+#include <algorithm>
 
 namespace tgc {
 namespace details {
+
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0, 0};
+ClassInfo ClassInfo::Empty{0, 0, 0, 0, 0};
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0);
 
-class Impl {
+class Collector {
  public:
   typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
   enum class State { RootMarking, ChildMarking, Sweeping };
@@ -21,16 +22,16 @@ class Impl {
   State state;
   vector<ClassInfo*> classInfos;
 
-  Impl() : state(State::RootMarking), nextRootMarking(0) {}
+  Collector() : state(State::RootMarking), nextRootMarking(0) {}
 
-  ~Impl() {
+  ~Collector() {
     collect(INT_MAX);
     for (auto i : classInfos)
       delete i;
   }
 
-  static Impl* get() {
-    static Impl i;
+  static Collector* get() {
+    static Collector i;
     return &i;
   }
 
@@ -82,10 +83,17 @@ class Impl {
   }
 
   void unregisterPtr(PtrBase* p) {
+    assert(p->index != INT_MAX);
+    if (p == pointers.back()) {
+      pointers.pop_back();
+      return;
+    }
     swap(pointers[p->index], pointers.back());
     auto* pointer = pointers[p->index];
     pointer->index = p->index;
+    p->index = INT_MAX;
     pointers.pop_back();
+
     // changing of pointers may affect the rootMarking
     if (!pointer->meta)
       return;
@@ -182,24 +190,24 @@ class Impl {
 //////////////////////////////////////////////////////////////////////////
 
 void gc_collect(int steps) {
-  return Impl::get()->collect(steps);
+  return Collector::get()->collect(steps);
 }
 
 PtrBase::PtrBase() : meta(0), isRoot(1) {
-  Impl::get()->registerPtr(this);
+  Collector::get()->registerPtr(this);
 }
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
-  Impl::get()->registerPtr(this);
-  meta = Impl::get()->findOwnerMeta(obj);
+  Collector::get()->registerPtr(this);
+  meta = Collector::get()->findOwnerMeta(obj);
 }
 
 PtrBase::~PtrBase() {
-  Impl::get()->unregisterPtr(this);
+  Collector::get()->unregisterPtr(this);
 }
 
 void PtrBase::onPtrChanged() {
-  Impl::get()->onPointeeChanged(this);
+  Collector::get()->onPointeeChanged(this);
 }
 
 // construct meta before object construction to ensure
@@ -209,20 +217,30 @@ ObjMeta* ClassInfo::newMeta(int objCnt) {
   auto o = alloc(this, objCnt);
   auto meta = new ObjMeta(this, o);
   meta->arrayLength = objCnt;
-  Impl::get()->metaSet.insert(meta);
+  Collector::get()->metaSet.insert(meta);
   return meta;
 }
 
 void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   if (state == ClassInfo::State::Registered)
     return;
+
   auto offset = (char*)p - (char*)owner->objPtr;
+
+  // constructor recursed.
+  if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
+    return;
+
   subPtrOffsets.push_back(offset);
 }
 
-ClassInfo* ClassInfo::newClassInfo(Alloc a, Dealloc d, int sz, EnumPtrs e) {
-  auto r = new ClassInfo(a, d, sz, e);
-  Impl::get()->classInfos.push_back(r);
+ClassInfo* ClassInfo::newClassInfo(const char* name,
+                                   Alloc a,
+                                   Dealloc d,
+                                   int sz,
+                                   EnumPtrs e) {
+  auto r = new ClassInfo(name, a, d, sz, e);
+  Collector::get()->classInfos.push_back(r);
   return r;
 }
 
