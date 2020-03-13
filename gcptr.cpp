@@ -25,7 +25,8 @@ class Collector {
   Collector() : state(State::RootMarking), nextRootMarking(0) {}
 
   ~Collector() {
-    collect(INT_MAX);
+    for (auto* i : metaSet)
+      delete i;
     for (auto i : classInfos)
       delete i;
   }
@@ -83,7 +84,6 @@ class Collector {
   }
 
   void unregisterPtr(PtrBase* p) {
-    assert(p->index != INT_MAX);
     if (p == pointers.back()) {
       pointers.pop_back();
       return;
@@ -91,7 +91,6 @@ class Collector {
     swap(pointers[p->index], pointers.back());
     auto* pointer = pointers[p->index];
     pointer->index = p->index;
-    p->index = INT_MAX;
     pointers.pop_back();
 
     // changing of pointers may affect the rootMarking

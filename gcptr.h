@@ -92,16 +92,6 @@ class ClassInfo {
     isCreatingObj--;
     state = ClassInfo::State::Registered;
   }
-  void destroy(ObjMeta* meta) {
-    auto i = enumPtrs(meta);
-    for (; i->hasNext();) {
-      auto* p = i->getNext();
-      p->~PtrBase();
-    }
-    delete i;
-    dctor(meta);
-  }
-
   template <typename T>
   static ClassInfo* get();
   static ClassInfo* newClassInfo(const char* name,
@@ -131,13 +121,19 @@ class ObjMeta {
 
   ~ObjMeta() {
     if (objPtr)
-      clsInfo->destroy(this);
+      destroy();
   }
   bool operator<(ObjMeta& r) const {
     return objPtr + clsInfo->size * arrayLength <= r.objPtr;
   }
   bool containsPtr(char* p) {
     return objPtr <= p && p < objPtr + clsInfo->size * arrayLength;
+  }
+  void destroy() {
+    if (!objPtr)
+      return;
+    clsInfo->dctor(this);
+    objPtr = nullptr;
   }
 };
 
@@ -213,6 +209,8 @@ class GcPtr : public PtrBase {
     r.reset(temp, tempMeta);
   }
 
+  ObjMeta* getMeta() { return meta; }
+
  protected:
   T* p;
 };
@@ -244,7 +242,7 @@ class gc : public GcPtr<T> {
 
 //////////////////////////////////////////////////////////////////////////
 
-void gc_collect(int steps = INT_MAX);
+void gc_collect(int steps = 10);
 
 template <typename T>
 gc<T> gc_from(T* t) {
@@ -252,8 +250,9 @@ gc<T> gc_from(T* t) {
 }
 
 template <typename T>
-void gc_free(gc<T>& c) {
-  c->~T();
+void gc_delete(gc<T>& c) {
+  if (c)
+    c.getMeta()->destroy();
   c = nullptr;
 }
 
@@ -316,10 +315,17 @@ ClassInfo* ClassInfo::get() {
   auto alloc = [](ClassInfo* cls, int cnt) {
     return new char[cls->size * cnt];
   };
-  auto destroy = [](ObjMeta* meta) { delete[] meta->objPtr; };
+  auto destroy = [](ObjMeta* meta) {
+    auto p = (T*)meta->objPtr;
+    for (size_t i = 0; i < meta->arrayLength; i++, p++) {
+      p->~T();
+    }
+    delete[] meta->objPtr;
+  };
   auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
     return new PtrEnumerator<T>(meta);
   };
+
   static ClassInfo* i =
 #ifdef TGC_DEBUG
       newClassInfo(typeid(T).name(), alloc, destroy, sizeof(T), enumPtrs);
