@@ -215,6 +215,9 @@ void testArray() {
   gc<ArrayTest> a;
   a = gc_new<ArrayTest>();
   a->f();
+
+  a = gc_new<ArrayTest>();
+  gc_delete(a);
 }
 
 void testCircledContainer() {
@@ -242,6 +245,9 @@ void testSet() {
     t->insert(o);
   }
   collect(1);
+
+  auto t = gc_new_set<rc>();
+  gc_delete(t);
 }
 
 void testList() {
@@ -250,6 +256,9 @@ void testList() {
   l->push_back(gc_new<int>(2));
   l->pop_back();
   assert(*l->back() == 1);
+
+  auto ll = gc_new_list<int>();
+  gc_delete(ll);
 }
 
 void testDeque() {
@@ -258,6 +267,9 @@ void testDeque() {
   l->push_back(gc_new<int>(2));
   l->pop_back();
   assert(*l->back() == 1);
+
+  auto ll = gc_new_deque<int>();
+  gc_delete(ll);
 }
 
 void testHashMap() {
@@ -265,6 +277,9 @@ void testHashMap() {
   l[1] = gc_new<int>(1);
   assert(l->size() == 1);
   assert(*l[1] == 1);
+
+  auto ll = gc_new_unordered_map<int, int>();
+  gc_delete(ll);
 }
 
 void testLambda() {

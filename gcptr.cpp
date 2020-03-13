@@ -30,8 +30,11 @@ class Collector {
   }
 
   ~Collector() {
-    for (auto* i : metaSet)
-      delete i;
+    for (auto i = metaSet.begin(); i != metaSet.end();) {
+      delete *i;
+      i = metaSet.erase(i);
+    }
+
     for (auto i : classInfos)
       delete i;
   }
@@ -192,7 +195,7 @@ class Collector {
       break;
     }
   }
-};
+};  // namespace details
 
 //////////////////////////////////////////////////////////////////////////
 

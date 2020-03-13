@@ -373,6 +373,14 @@ gc_vector<T> gc_new_vector(Args&&... args) {
   return gc_new<vector<gc<T>>>(forward<Args>(args)...);
 }
 
+template <typename T>
+void gc_delete(gc_vector<T>& p) {
+  for (auto& i : *p) {
+    gc_delete(i);
+  }
+  p->clear();
+}
+
 //////////////////////////////////////////////////////////////////////////
 /// Deque
 
@@ -395,6 +403,15 @@ template <typename T, typename... Args>
 gc_deque<T> gc_new_deque(Args&&... args) {
   return gc_new<deque<gc<T>>>(forward<Args>(args)...);
 }
+
+template <typename T>
+void gc_delete(gc_deque<T>& p) {
+  for (auto& i : *p) {
+    gc_delete(i);
+  }
+  p->clear();
+}
+
 //////////////////////////////////////////////////////////////////////////
 /// Function
 
@@ -460,6 +477,14 @@ gc_list<T> gc_new_list(Args&&... args) {
   return gc_new<list<gc<T>>>(forward<Args>(args)...);
 }
 
+template <typename T>
+void gc_delete(gc_list<T>& p) {
+  for (auto& i : *p) {
+    gc_delete(i);
+  }
+  p->clear();
+}
+
 //////////////////////////////////////////////////////////////////////////
 /// Map
 /// TODO: NOT support using gc object as key...
@@ -486,6 +511,14 @@ class PtrEnumerator<map<K, gc<V>>>
 template <typename K, typename V, typename... Args>
 gc_map<K, V> gc_new_map(Args&&... args) {
   return gc_new<map<K, gc<V>>>(forward<Args>(args)...);
+}
+
+template <typename K, typename V>
+void gc_delete(gc_map<K, V>& p) {
+  for (auto& i : *p) {
+    gc_delete(i->value);
+  }
+  p->clear();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -515,6 +548,13 @@ template <typename K, typename V, typename... Args>
 gc_unordered_map<K, V> gc_new_unordered_map(Args&&... args) {
   return gc_new<unordered_map<K, gc<V>>>(forward<Args>(args)...);
 }
+template <typename K, typename V>
+void gc_delete(gc_unordered_map<K, V>& p) {
+  for (auto& i : *p) {
+    gc_delete(i.second);
+  }
+  p->clear();
+}
 
 //////////////////////////////////////////////////////////////////////////
 /// Set
@@ -533,6 +573,15 @@ template <typename V, typename... Args>
 gc_set<V> gc_new_set(Args&&... args) {
   return gc_new<set<gc<V>>>(forward<Args>(args)...);
 }
+
+template <typename T>
+void gc_delete(gc_set<T>& p) {
+  for (auto i : *p) {
+    gc_delete(i);
+  }
+  p->clear();
+}
+
 }  // namespace details
 
 //////////////////////////////////////////////////////////////////////////
