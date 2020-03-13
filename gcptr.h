@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <deque>
 #include <list>
 #include <map>
@@ -53,6 +54,13 @@ class IPtrEnumerator {
   virtual ~IPtrEnumerator() {}
   virtual bool hasNext() = 0;
   virtual const PtrBase* getNext() = 0;
+
+  void* operator new(size_t sz) {
+    static char buf[255];
+    assert(sz < sizeof(buf));
+    return buf;
+  }
+  void operator delete(void*) {}
 };
 
 //////////////////////////////////////////////////////////////////////////
