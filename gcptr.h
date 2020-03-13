@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
-#define TGC_DEBUG
+//#define TGC_DEBUG
 
 namespace tgc {
 namespace details {
