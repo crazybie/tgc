@@ -8,6 +8,7 @@ namespace details {
 int ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty{0, 0, 0, 0, 0};
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0);
+static Collector* collector = nullptr;
 
 class Collector {
  public:
@@ -16,13 +17,17 @@ class Collector {
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
-  MetaSet metaSet;
-  size_t nextRootMarking;
-  MetaSet::iterator nextSweeping;
-  State state;
   vector<ClassInfo*> classInfos;
+  MetaSet metaSet;
+  MetaSet::iterator nextSweeping;
+  size_t nextRootMarking;
+  State state;
 
-  Collector() : state(State::RootMarking), nextRootMarking(0) {}
+  Collector() : state(State::RootMarking), nextRootMarking(0) {
+    pointers.reserve(1024 * 5);
+    grayObjs.reserve(1024 * 5);
+    classInfos.reserve(1024 * 5);
+  }
 
   ~Collector() {
     for (auto* i : metaSet)
@@ -32,8 +37,11 @@ class Collector {
   }
 
   static Collector* get() {
-    static Collector i;
-    return &i;
+    if (!collector) {
+      collector = new Collector();
+      atexit([] { delete collector; });
+    }
+    return collector;
   }
 
   void onPointeeChanged(PtrBase* p) {
