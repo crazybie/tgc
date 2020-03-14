@@ -1,6 +1,6 @@
 # TGC
 
-## A Tiny incremental mark & sweep Garbage Collector.
+## A True Tiny incremental mark & sweep Garbage Collector.
 
 Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
@@ -15,6 +15,7 @@ Warning: This project is only used in small products without heavy tests, take y
     - only one header & cpp file, easier to integrate.
     - no extra threads to collect garbages.
 - Non-instrusive
+    - used like shared_ptr.
     - do not need to replace the globoal new.
     - can work with raw pointers perfectly.
     - will not affect third party libraries.
@@ -22,12 +23,12 @@ Warning: This project is only used in small products without heavy tests, take y
 - Incremental marking and sweeping
     - won't stop the world.
     - can control the steps of each collecting call.
+    - can manually delete the obejct to control the destruction order.
 - Cross platform, No other dependencies
     - easier to integrate.
     - only dependent on STL.
-- Can work with your own memory manage system
-    - TGC only takes over the collecting task.
-    - can even works with std::shared_ptr, memory pool, etc. (TBD)
+- Can work with your own memory pool
+    - provide hooks to redirect memory allocation.
 
 ### TODO
 - exception safe.
