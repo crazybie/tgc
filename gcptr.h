@@ -68,13 +68,15 @@ class IPtrEnumerator {
 class ClassInfo {
  public:
   enum class State : char { Unregistered, Registered };
-  typedef char* (*Alloc)(ClassInfo* cls, int cnt);
+  typedef ObjMeta* (*Alloc)(ClassInfo* cls, int cnt);
+  typedef void (*Dctor)(ObjMeta* meta);
   typedef void (*Dealloc)(ObjMeta* meta);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
   const char* name;
   Alloc alloc;
-  Dealloc dctor;
+  Dctor dctor;
+  Dealloc dealloc;
   EnumPtrs enumPtrs;
   size_t size;
   vector<int> subPtrOffsets;
@@ -83,10 +85,11 @@ class ClassInfo {
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(const char* name_, Alloc a, Dealloc d, int sz, EnumPtrs e)
+  ClassInfo(const char* name_, Alloc a, Dealloc d, Dctor dc, int sz, EnumPtrs e)
       : name(name_),
         alloc(a),
-        dctor(d),
+        dealloc(d),
+        dctor(dc),
         size(sz),
         enumPtrs(e),
         state(State::Unregistered) {}
@@ -103,6 +106,7 @@ class ClassInfo {
   static ClassInfo* newClassInfo(const char* name,
                                  Alloc a,
                                  Dealloc d,
+                                 Dctor dc,
                                  int sz,
                                  EnumPtrs e);
 };
@@ -122,12 +126,18 @@ class ObjMeta {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
-  ObjMeta(ClassInfo* c, char* o)
-      : clsInfo(c), objPtr(o), markState(MarkColor::Unmarked), arrayLength(0) {}
-
+  ObjMeta(ClassInfo* c, char* o, int cnt)
+      : clsInfo(c),
+        objPtr(o),
+        markState(MarkColor::Unmarked),
+        arrayLength(cnt) {}
   ~ObjMeta() {
     if (objPtr)
       destroy();
+  }
+  void operator delete(void* c) {
+    auto* p = (ObjMeta*)c;
+    p->clsInfo->dealloc(p);
   }
   bool operator<(ObjMeta& r) const {
     return objPtr + clsInfo->size * arrayLength <= r.objPtr;
@@ -232,54 +242,27 @@ class gc : public GcPtr<T> {
   gc() {}
   gc(nullptr_t) {}
   gc(ObjMeta* o) : base(o) {}
+  gc(T* o) : base(o) {}
 };
 
-#define GC_DECL_AUTO_BOX(T)                     \
-  template <>                                   \
-  class gc<T> : public details::GcPtr<T> {      \
-   public:                                      \
-    using GcPtr::GcPtr;                         \
-    gc(const T& i) : GcPtr(gc_new<T>(i)) {}     \
-    gc() {}                                     \
-    gc(nullptr_t) {}                            \
-    operator T&() { return operator*(); }       \
-    operator T&() const { return operator*(); } \
+#define GC_DECL_AUTO_BOX(T)                                  \
+  template <>                                                \
+  class gc<T> : public details::GcPtr<T> {                   \
+   public:                                                   \
+    using GcPtr<T>::GcPtr;                                   \
+    gc(const T& i) : GcPtr(details::gc_new_meta<T>(1, i)) {} \
+    gc() {}                                                  \
+    gc(nullptr_t) {}                                         \
+    operator T&() { return operator*(); }                    \
+    operator T&() const { return operator*(); }              \
   };
 
 //////////////////////////////////////////////////////////////////////////
 
-void gc_collect(int steps = 10);
-
-template <typename T>
-gc<T> gc_from(T* t) {
-  return gc<T>(t);
-}
-
-template <typename T>
-void gc_delete(gc<T>& c) {
-  if (c)
-    c.getMeta()->destroy();
-  c = nullptr;
-}
-
-// compatible with std::shared_ptr
-template <typename To, typename From>
-gc<To> gc_static_pointer_cast(gc<From>& from) {
-  return gc<To>((To*)from.operator->());
-}
+void gc_collect(int steps = 256);
 
 template <typename T, typename... Args>
-gc<T> gc_new(Args&&... args) {
-  ClassInfo* cls = ClassInfo::get<T>();
-  cls->beginObjCreating();
-  auto* meta = cls->newMeta(1);
-  new (meta->objPtr) T(forward<Args>(args)...);
-  cls->endObjCreating();
-  return meta;
-}
-
-template <typename T, typename... Args>
-gc<T> gc_new_array(size_t len, Args&&... args) {
+ObjMeta* gc_new_meta(size_t len, Args&&... args) {
   ClassInfo* cls = ClassInfo::get<T>();
   cls->beginObjCreating();
   auto* meta = cls->newMeta(len);
@@ -288,6 +271,30 @@ gc<T> gc_new_array(size_t len, Args&&... args) {
     new (p) T(forward<Args>(args)...);
   cls->endObjCreating();
   return meta;
+}
+
+template <typename T>
+void gc_delete(gc<T>& c) {
+  if (c) {
+    c.getMeta()->destroy();
+    c = nullptr;
+  }
+}
+
+// compatible with std::shared_ptr
+template <typename To, typename From>
+gc<To> gc_static_pointer_cast(gc<From>& from) {
+  return static_cast<To*>(from.operator->());
+}
+
+template <typename T, typename... Args>
+gc<T> gc_new(Args&&... args) {
+  return gc_new_meta<T>(1, forward<Args>(args)...);
+}
+
+template <typename T, typename... Args>
+gc<T> gc_new_array(size_t len, Args&&... args) {
+  return gc_new_meta<T>(len, forward<Args>(args)...);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -319,14 +326,15 @@ class PtrEnumerator : public IPtrEnumerator {
 template <typename T>
 ClassInfo* ClassInfo::get() {
   auto alloc = [](ClassInfo* cls, int cnt) {
-    return new char[cls->size * cnt];
+    auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
+    return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
   };
-  auto destroy = [](ObjMeta* meta) {
+  auto dealloc = [](ObjMeta* meta) { delete[](char*) meta; };
+  auto destruct = [](ObjMeta* meta) {
     auto p = (T*)meta->objPtr;
     for (size_t i = 0; i < meta->arrayLength; i++, p++) {
       p->~T();
     }
-    delete[] meta->objPtr;
   };
   auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
     return new PtrEnumerator<T>(meta);
@@ -334,9 +342,10 @@ ClassInfo* ClassInfo::get() {
 
   static ClassInfo* i =
 #ifdef TGC_DEBUG
-      newClassInfo(typeid(T).name(), alloc, destroy, sizeof(T), enumPtrs);
+      newClassInfo(typeid(T).name(), alloc, dealloc, destruct, sizeof(T),
+                   enumPtrs);
 #else
-      newClassInfo("", alloc, destroy, sizeof(T), enumPtrs);
+      newClassInfo("", alloc, dealloc, destruct, sizeof(T), enumPtrs);
 #endif
   return i;
 }
@@ -595,7 +604,6 @@ void gc_delete(gc_set<T>& p) {
 
 using details::gc;
 using details::gc_collect;
-using details::gc_from;
 using details::gc_new;
 using details::gc_new_array;
 using details::gc_static_pointer_cast;

@@ -6,8 +6,8 @@ namespace tgc {
 namespace details {
 
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0, 0, 0};
-ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0);
+ClassInfo ClassInfo::Empty{0, 0, 0, 0, 0, 0};
+ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 static Collector* collector = nullptr;
 
 class Collector {
@@ -24,9 +24,9 @@ class Collector {
   State state;
 
   Collector() : state(State::RootMarking), nextRootMarking(0) {
-    pointers.reserve(1024 * 5);
-    grayObjs.reserve(1024 * 5);
     classInfos.reserve(1024 * 5);
+    pointers.reserve(1024 * 5);
+    grayObjs.reserve(1024 * 2);
   }
 
   ~Collector() {
@@ -34,7 +34,6 @@ class Collector {
       delete *i;
       i = metaSet.erase(i);
     }
-
     for (auto i : classInfos)
       delete i;
   }
@@ -84,15 +83,23 @@ class Collector {
     p->index = pointers.size();
     pointers.push_back(p);
     if (ClassInfo::isCreatingObj > 0) {
-      // owner may not be the current one(e.g pointers on the stack of
-      // constructor)
-      auto* owner = findOwnerMeta(p);
-      if (!owner)
-        return;
-      p->isRoot = 0;  // we know it is leaf before tracing.
-      owner->clsInfo->registerSubPtr(owner, p);
+      // owner may not be the current one(e.g. constructor recursed)
+      if (auto* owner = findOwnerMeta(p)) {
+        p->isRoot = 0;
+        owner->clsInfo->registerSubPtr(owner, p);
+      }
     }
   }
+
+  ObjMeta* findOwnerMeta(void* obj) {
+    DummyMetaInfo.objPtr = (char*)obj;
+    auto i = metaSet.lower_bound(&DummyMetaInfo);
+    DummyMetaInfo.objPtr = 0;
+    if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
+      return nullptr;
+    }
+    return *i;
+  };
 
   void unregisterPtr(PtrBase* p) {
     if (p == pointers.back()) {
@@ -113,16 +120,6 @@ class Collector {
       }
     }
   }
-
-  ObjMeta* findOwnerMeta(void* obj) {
-    DummyMetaInfo.objPtr = (char*)obj;
-    auto i = metaSet.lower_bound(&DummyMetaInfo);
-    DummyMetaInfo.objPtr = 0;
-    if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
-      return 0;
-    }
-    return *i;
-  };
 
   void collect(int stepCnt) {
     switch (state) {
@@ -208,25 +205,24 @@ PtrBase::PtrBase() : meta(0), isRoot(1) {
 }
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
-  Collector::get()->registerPtr(this);
-  meta = Collector::get()->findOwnerMeta(obj);
+  auto c = Collector::get();
+  c->registerPtr(this);
+  meta = c->findOwnerMeta(obj);
 }
 
 PtrBase::~PtrBase() {
-  Collector::get()->unregisterPtr(this);
+  collector->unregisterPtr(this);
 }
 
 void PtrBase::onPtrChanged() {
-  Collector::get()->onPointeeChanged(this);
+  collector->onPointeeChanged(this);
 }
 
 // construct meta before object construction to ensure
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
   // allocate memory & meta ahead of time for owner meta finding.
-  auto o = alloc(this, objCnt);
-  auto meta = new ObjMeta(this, o);
-  meta->arrayLength = objCnt;
+  auto meta = alloc(this, objCnt);
   Collector::get()->metaSet.insert(meta);
   return meta;
 }
@@ -247,9 +243,10 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 ClassInfo* ClassInfo::newClassInfo(const char* name,
                                    Alloc a,
                                    Dealloc d,
+                                   Dctor dc,
                                    int sz,
                                    EnumPtrs e) {
-  auto r = new ClassInfo(name, a, d, sz, e);
+  auto r = new ClassInfo(name, a, d, dc, sz, e);
   Collector::get()->classInfos.push_back(r);
   return r;
 }
