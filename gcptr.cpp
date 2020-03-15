@@ -6,7 +6,7 @@ namespace tgc {
 namespace details {
 
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0, 0};
+ClassInfo ClassInfo::Empty{0, 0, 0};
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
 static Collector* collector = nullptr;
@@ -223,7 +223,7 @@ void PtrBase::onPtrChanged() {
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
   // allocate memory & meta ahead of time for owner meta finding.
-  auto meta = memHandler(this, MemRequest::Alloc, (void*)objCnt);
+  auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc, (void*)objCnt);
   Collector::get()->metaSet.insert(meta);
   return meta;
 }
@@ -241,11 +241,8 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   subPtrOffsets.push_back(offset);
 }
 
-ClassInfo* ClassInfo::newClassInfo(const char* name,
-                                   MemHandler h,
-                                   int sz,
-                                   EnumPtrs e) {
-  auto r = new ClassInfo(name, h, sz, e);
+ClassInfo* ClassInfo::newClassInfo(const char* name, MemHandler h, int sz) {
+  auto r = new ClassInfo(name, h, sz);
   Collector::get()->classInfos.push_back(r);
   return r;
 }

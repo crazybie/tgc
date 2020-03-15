@@ -68,15 +68,14 @@ class IPtrEnumerator {
 class ClassInfo {
  public:
   enum class State : char { Unregistered, Registered };
-  enum class MemRequest { Alloc, Dctor, Dealloc };
-  typedef ObjMeta* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
+  enum class MemRequest { Alloc, Dctor, Dealloc, PtrEnumerator };
+  typedef void* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
 #ifdef TGC_DEBUG
   const char* name;
 #endif
   MemHandler memHandler;
-  EnumPtrs enumPtrs;
   State state : 2;
   size_t size : sizeof(void*) * 8 - 2;
   vector<int> subPtrOffsets;
@@ -84,7 +83,7 @@ class ClassInfo {
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(const char* name_, MemHandler h, int sz, EnumPtrs e)
+  ClassInfo(const char* name_, MemHandler h, int sz)
 #ifdef TGC_DEBUG
       : name(name_),
 #else
@@ -92,7 +91,6 @@ class ClassInfo {
 #endif
         memHandler(h),
         size(sz),
-        enumPtrs(e),
         state(State::Unregistered) {
   }
 
@@ -103,12 +101,12 @@ class ClassInfo {
     isCreatingObj--;
     state = ClassInfo::State::Registered;
   }
+  IPtrEnumerator* enumPtrs(ObjMeta* m) {
+    return (IPtrEnumerator*)memHandler(this, MemRequest::PtrEnumerator, m);
+  }
   template <typename T>
   static ClassInfo* get();
-  static ClassInfo* newClassInfo(const char* name,
-                                 MemHandler h,
-                                 int sz,
-                                 EnumPtrs e);
+  static ClassInfo* newClassInfo(const char* name, MemHandler h, int sz);
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -289,7 +287,7 @@ class PtrEnumerator : public IPtrEnumerator {
 
 template <typename T>
 ClassInfo* ClassInfo::get() {
-  auto memHandler = [](ClassInfo* cls, MemRequest r, void* param) -> ObjMeta* {
+  auto memHandler = [](ClassInfo* cls, MemRequest r, void* param) -> void* {
     switch (r) {
       case MemRequest::Alloc: {
         auto cnt = (int)param;
@@ -307,18 +305,18 @@ ClassInfo* ClassInfo::get() {
           p->~T();
         }
       } break;
+      case MemRequest::PtrEnumerator: {
+        auto meta = (ObjMeta*)param;
+        return new PtrEnumerator<T>(meta);
+      } break;
     }
     return nullptr;
   };
-  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
-    return new PtrEnumerator<T>(meta);
-  };
 
 #ifdef TGC_DEBUG
-  static ClassInfo* i =
-      newClassInfo(typeid(T).name(), memHandler, sizeof(T), enumPtrs);
+  static ClassInfo* i = newClassInfo(typeid(T).name(), memHandler, sizeof(T));
 #else
-  static ClassInfo* i = newClassInfo("", memHandler, sizeof(T), enumPtrs);
+  static ClassInfo* i = newClassInfo("", memHandler, sizeof(T));
 #endif
   return i;
 }
