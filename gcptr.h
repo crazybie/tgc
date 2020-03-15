@@ -249,7 +249,7 @@ class gc : public GcPtr<T> {
   gc(T* o) : base(o) {}
 };
 
-#define GC_DECL_AUTO_BOX(T)                                  \
+#define TGC_DECL_AUTO_BOX(T)                                 \
   template <>                                                \
   class gc<T> : public details::GcPtr<T> {                   \
    public:                                                   \
@@ -363,15 +363,6 @@ gc<T> gc_new_array(size_t len, Args&&... args) {
 // Wrap STL Containers
 //////////////////////////////////////////////////////////////////////////
 
-template <typename C>
-class ContainerPtrEnumerator : public IPtrEnumerator {
- public:
-  C* o;
-  typename C::iterator it;
-  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()) { it = o->begin(); }
-  bool hasNext() override { return it != o->end(); }
-};
-
 //////////////////////////////////////////////////////////////////////////
 /// Function
 
@@ -385,12 +376,17 @@ class gc_function<R(A...)> {
 
   template <typename F>
   gc_function(F&& f) {
-    *this = f;
+    *this = forward<F>(f);
   }
 
   template <typename F>
-  void operator=(F& f) {
-    callable = gc_new<Imp<F>>(f);
+  void operator=(F&& f) {
+    struct Imp : Callable {
+      F f;
+      Imp(F&& ff) : f(ff) {}
+      R call(A... a) override { return f(a...); }
+    };
+    callable = gc_new<Imp>(forward<F>(f));
   }
 
   template <typename... U>
@@ -401,22 +397,24 @@ class gc_function<R(A...)> {
   explicit operator bool() const { return (bool)callable; }
 
  private:
-  class Callable {
-   public:
+  struct Callable {
     virtual ~Callable() {}
     virtual R call(A... a) = 0;
   };
 
-  template <typename F>
-  class Imp : public Callable {
-   public:
-    F f;
-    Imp(F& ff) : f(ff) {}
-    R call(A... a) override { return f(a...); }
-  };
-
  private:
   gc<Callable> callable;
+};
+
+//////////////////////////////////////////////////////////////////////////
+
+template <typename C>
+class ContainerPtrEnumerator : public IPtrEnumerator {
+ public:
+  C* o;
+  typename C::iterator it;
+  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()) { it = o->begin(); }
+  bool hasNext() override { return it != o->end(); }
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -637,17 +635,17 @@ using details::gc_unordered_map;
 using details::gc_new_vector;
 using details::gc_vector;
 
-GC_DECL_AUTO_BOX(char);
-GC_DECL_AUTO_BOX(unsigned char);
-GC_DECL_AUTO_BOX(short);
-GC_DECL_AUTO_BOX(unsigned short);
-GC_DECL_AUTO_BOX(int);
-GC_DECL_AUTO_BOX(unsigned int);
-GC_DECL_AUTO_BOX(float);
-GC_DECL_AUTO_BOX(double);
-GC_DECL_AUTO_BOX(long);
-GC_DECL_AUTO_BOX(unsigned long);
-GC_DECL_AUTO_BOX(std::string);
+TGC_DECL_AUTO_BOX(char);
+TGC_DECL_AUTO_BOX(unsigned char);
+TGC_DECL_AUTO_BOX(short);
+TGC_DECL_AUTO_BOX(unsigned short);
+TGC_DECL_AUTO_BOX(int);
+TGC_DECL_AUTO_BOX(unsigned int);
+TGC_DECL_AUTO_BOX(float);
+TGC_DECL_AUTO_BOX(double);
+TGC_DECL_AUTO_BOX(long);
+TGC_DECL_AUTO_BOX(unsigned long);
+TGC_DECL_AUTO_BOX(std::string);
 
 using gc_string = gc<std::string>;
 

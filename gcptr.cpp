@@ -1,6 +1,8 @@
 #include "gcptr.h"
 
-#include <algorithm>
+#ifdef _WIN32
+#include <crtdbg.h>
+#endif
 
 namespace tgc {
 namespace details {
@@ -41,6 +43,9 @@ class Collector {
 
   static Collector* get() {
     if (!collector) {
+#ifdef _WIN32
+      _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
       collector = new Collector();
       atexit([] { delete collector; });
     }
