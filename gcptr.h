@@ -68,31 +68,33 @@ class IPtrEnumerator {
 class ClassInfo {
  public:
   enum class State : char { Unregistered, Registered };
-  typedef ObjMeta* (*Alloc)(ClassInfo* cls, int cnt);
-  typedef void (*Dctor)(ObjMeta* meta);
-  typedef void (*Dealloc)(ObjMeta* meta);
+  enum class MemRequest { Alloc, Dctor, Dealloc };
+  typedef ObjMeta* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
+#ifdef TGC_DEBUG
   const char* name;
-  Alloc alloc;
-  Dctor dctor;
-  Dealloc dealloc;
+#endif
+  MemHandler memHandler;
   EnumPtrs enumPtrs;
-  size_t size;
+  State state : 2;
+  size_t size : sizeof(void*) * 8 - 2;
   vector<int> subPtrOffsets;
-  State state;
 
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(const char* name_, Alloc a, Dealloc d, Dctor dc, int sz, EnumPtrs e)
+  ClassInfo(const char* name_, MemHandler h, int sz, EnumPtrs e)
+#ifdef TGC_DEBUG
       : name(name_),
-        alloc(a),
-        dealloc(d),
-        dctor(dc),
+#else
+      :
+#endif
+        memHandler(h),
         size(sz),
         enumPtrs(e),
-        state(State::Unregistered) {}
+        state(State::Unregistered) {
+  }
 
   ObjMeta* newMeta(int objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
@@ -104,9 +106,7 @@ class ClassInfo {
   template <typename T>
   static ClassInfo* get();
   static ClassInfo* newClassInfo(const char* name,
-                                 Alloc a,
-                                 Dealloc d,
-                                 Dctor dc,
+                                 MemHandler h,
                                  int sz,
                                  EnumPtrs e);
 };
@@ -115,43 +115,49 @@ class ClassInfo {
 
 class ObjMeta {
  public:
-  enum MarkColor : char { Unmarked, Gray, Alive };
+  enum class MarkColor { Unmarked, Gray, Alive };
 
   ClassInfo* clsInfo;
-  char* objPtr;
-  size_t arrayLength;
-  MarkColor markState;
+  MarkColor markState : 2;
+  unsigned int arrayLength : sizeof(void*) * 8 - 2;
+
+  static char* dummyObjPtr;
 
   struct Less {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
   ObjMeta(ClassInfo* c, char* o, int cnt)
-      : clsInfo(c),
-        objPtr(o),
-        markState(MarkColor::Unmarked),
-        arrayLength(cnt) {}
+      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength(cnt) {}
+
   ~ObjMeta() {
-    if (objPtr)
+    if (arrayLength)
       destroy();
   }
+
   void operator delete(void* c) {
     auto* p = (ObjMeta*)c;
-    p->clsInfo->dealloc(p);
+    p->clsInfo->memHandler(p->clsInfo, ClassInfo::MemRequest::Dealloc, p);
   }
   bool operator<(ObjMeta& r) const {
-    return objPtr + clsInfo->size * arrayLength <= r.objPtr;
+    return objPtr() + clsInfo->size * arrayLength <= r.objPtr();
   }
   bool containsPtr(char* p) {
-    return objPtr <= p && p < objPtr + clsInfo->size * arrayLength;
+    return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
+  }
+  char* objPtr() const {
+    return !dummyObjPtr ? (char*)this + sizeof(ObjMeta) : dummyObjPtr;
   }
   void destroy() {
-    if (!objPtr)
+    if (!arrayLength)
       return;
-    clsInfo->dctor(this);
-    objPtr = nullptr;
+    clsInfo->memHandler(clsInfo, ClassInfo::MemRequest::Dctor, this);
+    arrayLength = 0;
   }
 };
+
+static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
+              "too large for small allocation");
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -168,7 +174,7 @@ class GcPtr : public PtrBase {
   // Constructors
 
   GcPtr() : p(nullptr) {}
-  GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr, meta); }
+  GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr(), meta); }
   explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
   template <typename U>
   GcPtr(const GcPtr<U>& r) {
@@ -259,6 +265,64 @@ class gc : public GcPtr<T> {
 
 //////////////////////////////////////////////////////////////////////////
 
+template <typename C>
+class PtrEnumerator : public IPtrEnumerator {
+ public:
+  size_t subPtrIdx, arrayElemIdx;
+  ObjMeta* meta;
+
+  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
+
+  bool hasNext() override {
+    return arrayElemIdx < meta->arrayLength &&
+           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+  }
+  const PtrBase* getNext() override {
+    auto* clsInfo = meta->clsInfo;
+    auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
+    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
+    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+      arrayElemIdx++;
+    return (PtrBase*)subPtr;
+  }
+};
+
+template <typename T>
+ClassInfo* ClassInfo::get() {
+  auto memHandler = [](ClassInfo* cls, MemRequest r, void* param) -> ObjMeta* {
+    switch (r) {
+      case MemRequest::Alloc: {
+        auto cnt = (int)param;
+        auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
+        return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
+      }
+      case MemRequest::Dealloc: {
+        auto meta = (ObjMeta*)param;
+        delete[](char*) meta;
+      } break;
+      case MemRequest::Dctor: {
+        auto meta = (ObjMeta*)param;
+        auto p = (T*)meta->objPtr();
+        for (size_t i = 0; i < meta->arrayLength; i++, p++) {
+          p->~T();
+        }
+      } break;
+    }
+    return nullptr;
+  };
+  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
+    return new PtrEnumerator<T>(meta);
+  };
+
+#ifdef TGC_DEBUG
+  static ClassInfo* i =
+      newClassInfo(typeid(T).name(), memHandler, sizeof(T), enumPtrs);
+#else
+  static ClassInfo* i = newClassInfo("", memHandler, sizeof(T), enumPtrs);
+#endif
+  return i;
+}
+
 void gc_collect(int steps = 256);
 
 template <typename T, typename... Args>
@@ -266,7 +330,7 @@ ObjMeta* gc_new_meta(size_t len, Args&&... args) {
   ClassInfo* cls = ClassInfo::get<T>();
   cls->beginObjCreating();
   auto* meta = cls->newMeta(len);
-  auto* p = (T*)meta->objPtr;
+  auto* p = (T*)meta->objPtr();
   for (size_t i = 0; i < len; i++, p++)
     new (p) T(forward<Args>(args)...);
   cls->endObjCreating();
@@ -298,59 +362,6 @@ gc<T> gc_new_array(size_t len, Args&&... args) {
 }
 
 //////////////////////////////////////////////////////////////////////////
-
-template <typename C>
-class PtrEnumerator : public IPtrEnumerator {
- public:
-  size_t subPtrIdx, arrayElemIdx;
-  ObjMeta* meta;
-
-  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
-
-  bool hasNext() override {
-    return arrayElemIdx < meta->arrayLength &&
-           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
-  }
-  const PtrBase* getNext() override {
-    auto* clsInfo = meta->clsInfo;
-    auto* obj = meta->objPtr + arrayElemIdx * clsInfo->size;
-    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
-    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
-      arrayElemIdx++;
-    return (PtrBase*)subPtr;
-  }
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-ClassInfo* ClassInfo::get() {
-  auto alloc = [](ClassInfo* cls, int cnt) {
-    auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
-    return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
-  };
-  auto dealloc = [](ObjMeta* meta) { delete[](char*) meta; };
-  auto destruct = [](ObjMeta* meta) {
-    auto p = (T*)meta->objPtr;
-    for (size_t i = 0; i < meta->arrayLength; i++, p++) {
-      p->~T();
-    }
-  };
-  auto enumPtrs = [](ObjMeta* meta) -> IPtrEnumerator* {
-    return new PtrEnumerator<T>(meta);
-  };
-
-  static ClassInfo* i =
-#ifdef TGC_DEBUG
-      newClassInfo(typeid(T).name(), alloc, dealloc, destruct, sizeof(T),
-                   enumPtrs);
-#else
-      newClassInfo("", alloc, dealloc, destruct, sizeof(T), enumPtrs);
-#endif
-  return i;
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Wrap STL Containers
 //////////////////////////////////////////////////////////////////////////
 
@@ -359,8 +370,55 @@ class ContainerPtrEnumerator : public IPtrEnumerator {
  public:
   C* o;
   typename C::iterator it;
-  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr) { it = o->begin(); }
+  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()) { it = o->begin(); }
   bool hasNext() override { return it != o->end(); }
+};
+
+//////////////////////////////////////////////////////////////////////////
+/// Function
+
+template <typename T>
+class gc_function;
+
+template <typename R, typename... A>
+class gc_function<R(A...)> {
+ public:
+  gc_function() {}
+
+  template <typename F>
+  gc_function(F&& f) {
+    *this = f;
+  }
+
+  template <typename F>
+  void operator=(F& f) {
+    callable = gc_new<Imp<F>>(f);
+  }
+
+  template <typename... U>
+  R operator()(U&&... a) const {
+    return callable->call(forward<U>(a)...);
+  }
+
+  explicit operator bool() const { return (bool)callable; }
+
+ private:
+  class Callable {
+   public:
+    virtual ~Callable() {}
+    virtual R call(A... a) = 0;
+  };
+
+  template <typename F>
+  class Imp : public Callable {
+   public:
+    F f;
+    Imp(F& ff) : f(ff) {}
+    R call(A... a) override { return f(a...); }
+  };
+
+ private:
+  gc<Callable> callable;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -426,53 +484,6 @@ void gc_delete(gc_deque<T>& p) {
   }
   p->clear();
 }
-
-//////////////////////////////////////////////////////////////////////////
-/// Function
-
-template <typename T>
-class gc_function;
-
-template <typename R, typename... A>
-class gc_function<R(A...)> {
- public:
-  gc_function() {}
-
-  template <typename F>
-  gc_function(F&& f) {
-    *this = f;
-  }
-
-  template <typename F>
-  void operator=(F& f) {
-    callable = gc_new<Imp<F>>(f);
-  }
-
-  template <typename... U>
-  R operator()(U&&... a) const {
-    return callable->call(forward<U>(a)...);
-  }
-
-  explicit operator bool() const { return (bool)callable; }
-
- private:
-  class Callable {
-   public:
-    virtual ~Callable() {}
-    virtual R call(A... a) = 0;
-  };
-
-  template <typename F>
-  class Imp : public Callable {
-   public:
-    F f;
-    Imp(F& ff) : f(ff) {}
-    R call(A... a) override { return f(a...); }
-  };
-
- private:
-  gc<Callable> callable;
-};
 
 //////////////////////////////////////////////////////////////////////////
 /// List

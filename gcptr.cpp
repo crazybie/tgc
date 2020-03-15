@@ -6,8 +6,9 @@ namespace tgc {
 namespace details {
 
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0, 0, 0, 0};
+ClassInfo ClassInfo::Empty{0, 0, 0, 0};
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
+char* ObjMeta::dummyObjPtr = 0;
 static Collector* collector = nullptr;
 
 class Collector {
@@ -58,12 +59,12 @@ class Collector {
         tryMarkRoot(p);
         break;
       case State::Sweeping:
-        if (p->meta->markState == ObjMeta::Unmarked) {
+        if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
           if (*p->meta < **nextSweeping) {
             // already white and ready for the next rootMarking.
           } else {
             // mark it alive to bypass sweeping.
-            p->meta->markState = ObjMeta::Alive;
+            p->meta->markState = ObjMeta::MarkColor::Alive;
           }
         }
         break;
@@ -72,8 +73,8 @@ class Collector {
 
   void tryMarkRoot(PtrBase* p) {
     if (p->isRoot == 1) {
-      if (p->meta->markState == ObjMeta::Unmarked) {
-        p->meta->markState = ObjMeta::Gray;
+      if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
+        p->meta->markState = ObjMeta::MarkColor::Gray;
         grayObjs.push_back(p->meta);
       }
     }
@@ -92,9 +93,9 @@ class Collector {
   }
 
   ObjMeta* findOwnerMeta(void* obj) {
-    DummyMetaInfo.objPtr = (char*)obj;
+    DummyMetaInfo.dummyObjPtr = (char*)obj;
     auto i = metaSet.lower_bound(&DummyMetaInfo);
-    DummyMetaInfo.objPtr = 0;
+    DummyMetaInfo.dummyObjPtr = nullptr;
     if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
       return nullptr;
     }
@@ -150,7 +151,7 @@ class Collector {
       while (grayObjs.size() && stepCnt-- > 0) {
         ObjMeta* o = grayObjs.back();
         grayObjs.pop_back();
-        o->markState = ObjMeta::Alive;
+        o->markState = ObjMeta::MarkColor::Alive;
 
         auto cls = o->clsInfo;
         auto it = cls->enumPtrs(o);
@@ -159,7 +160,7 @@ class Collector {
           auto* meta = ptr->meta;
           if (!meta)
             continue;
-          if (meta->markState == ObjMeta::Unmarked) {
+          if (meta->markState == ObjMeta::MarkColor::Unmarked) {
             grayObjs.push_back(meta);
           }
         }
@@ -176,12 +177,12 @@ class Collector {
     case State::Sweeping:
       for (; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
         ObjMeta* meta = *nextSweeping;
-        if (meta->markState == ObjMeta::Unmarked) {
+        if (meta->markState == ObjMeta::MarkColor::Unmarked) {
           nextSweeping = metaSet.erase(nextSweeping);
           delete meta;
           continue;
         }
-        meta->markState = ObjMeta::Unmarked;
+        meta->markState = ObjMeta::MarkColor::Unmarked;
         ++nextSweeping;
       }
       if (nextSweeping == metaSet.end()) {
@@ -222,7 +223,7 @@ void PtrBase::onPtrChanged() {
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
   // allocate memory & meta ahead of time for owner meta finding.
-  auto meta = alloc(this, objCnt);
+  auto meta = memHandler(this, MemRequest::Alloc, (void*)objCnt);
   Collector::get()->metaSet.insert(meta);
   return meta;
 }
@@ -231,7 +232,7 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   if (state == ClassInfo::State::Registered)
     return;
 
-  auto offset = (char*)p - (char*)owner->objPtr;
+  auto offset = (char*)p - owner->objPtr();
 
   // constructor recursed.
   if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
@@ -241,12 +242,10 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 }
 
 ClassInfo* ClassInfo::newClassInfo(const char* name,
-                                   Alloc a,
-                                   Dealloc d,
-                                   Dctor dc,
+                                   MemHandler h,
                                    int sz,
                                    EnumPtrs e) {
-  auto r = new ClassInfo(name, a, d, dc, sz, e);
+  auto r = new ClassInfo(name, h, sz, e);
   Collector::get()->classInfos.push_back(r);
   return r;
 }
