@@ -371,18 +371,11 @@ class gc_function<R(A...)> {
   gc_function() {}
 
   template <typename F>
-  gc_function(F&& f) {
-    *this = forward<F>(f);
-  }
+  gc_function(F&& f) : callable(gc_new_meta<Imp<F>>(1, forward<F>(f))) {}
 
   template <typename F>
   void operator=(F&& f) {
-    struct Imp : Callable {
-      F f;
-      Imp(F&& ff) : f(ff) {}
-      R call(A... a) override { return f(a...); }
-    };
-    callable = gc_new<Imp>(forward<F>(f));
+    callable = gc_new_meta<Imp<F>>(1, forward<F>(f));
   }
 
   template <typename... U>
@@ -396,6 +389,13 @@ class gc_function<R(A...)> {
   struct Callable {
     virtual ~Callable() {}
     virtual R call(A... a) = 0;
+  };
+
+  template <typename F>
+  struct Imp : Callable {
+    F f;
+    Imp(F&& ff) : f(ff) {}
+    R call(A... a) override { return f(a...); }
   };
 
  private:
