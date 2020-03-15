@@ -251,7 +251,7 @@ class gc : public GcPtr<T> {
 
 #define TGC_DECL_AUTO_BOX(T)                                 \
   template <>                                                \
-  class gc<T> : public details::GcPtr<T> {                   \
+  class details::gc<T> : public details::GcPtr<T> {          \
    public:                                                   \
     using GcPtr<T>::GcPtr;                                   \
     gc(const T& i) : GcPtr(details::gc_new_meta<T>(1, i)) {} \
@@ -360,10 +360,6 @@ gc<T> gc_new_array(size_t len, Args&&... args) {
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Wrap STL Containers
-//////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////
 /// Function
 
 template <typename T>
@@ -406,6 +402,8 @@ class gc_function<R(A...)> {
   gc<Callable> callable;
 };
 
+//////////////////////////////////////////////////////////////////////////
+// Wrap STL Containers
 //////////////////////////////////////////////////////////////////////////
 
 template <typename C>
@@ -611,14 +609,13 @@ void gc_delete(gc_set<T>& p) {
 
 using details::gc;
 using details::gc_collect;
+using details::gc_function;
 using details::gc_new;
 using details::gc_new_array;
 using details::gc_static_pointer_cast;
 
 using details::gc_deque;
 using details::gc_new_deque;
-
-using details::gc_function;
 
 using details::gc_list;
 using details::gc_new_list;
@@ -647,6 +644,6 @@ TGC_DECL_AUTO_BOX(long);
 TGC_DECL_AUTO_BOX(unsigned long);
 TGC_DECL_AUTO_BOX(std::string);
 
-using gc_string = gc<std::string>;
+using gc_string = details::gc<std::string>;
 
 }  // namespace tgc
