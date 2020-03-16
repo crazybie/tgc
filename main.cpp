@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <windows.h>
 
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <set>
@@ -69,7 +70,7 @@ struct d2 : public b1, public b2 {
 struct rc {
   int a = 11;
   rc() {}
-  ~rc() { auto i = gc_from(this); }
+  ~rc() { auto i = gc<rc>(this); }
 };
 
 void test() {
@@ -192,7 +193,7 @@ struct g {
     int i = 0;
   }
 };
-// gc_ptr<g> global(gcnew<g>());
+// gc<g> global(gc_new<g>());
 
 struct ArrayTest {
   gc_vector<rc> a;

@@ -1,14 +1,15 @@
 /*
-    TGC: Tiny incremental mark & sweep Garbage Collector.
+TGC: Tiny incremental mark & sweep Garbage Collector.
+by crazybie at soniced@sina.com
 
-    Inspired by
-   http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+NOTE:
+- never construct gc object in global scope.
+- TODO: exception safe.
+- TODO: thread safe.
 
-    TODO:
-    - exception safe.
-    - thread safe.
+Useful refs:
+http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
-    by crazybie at soniced@sina.com
 */
 
 #pragma once
@@ -23,6 +24,12 @@
 #include <vector>
 
 //#define TGC_DEBUG
+
+#ifdef TGC_DEBUG
+#define TGC_DEBUG_CODE(...) __VA_ARGS__
+#else
+#define TGC_DEBUG_CODE(...)
+#endif
 
 namespace tgc {
 namespace details {
@@ -72,9 +79,7 @@ class ClassInfo {
   typedef void* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
-#ifdef TGC_DEBUG
-  const char* name;
-#endif
+  TGC_DEBUG_CODE(const char* name);
   MemHandler memHandler;
   State state : 2;
   size_t size : sizeof(void*) * 8 - 2;
@@ -83,16 +88,11 @@ class ClassInfo {
   static int isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo(const char* name_, MemHandler h, int sz)
-#ifdef TGC_DEBUG
-      : name(name_),
-#else
-      :
-#endif
-        memHandler(h),
+  ClassInfo() : memHandler(nullptr), size(0) {}
+  ClassInfo(TGC_DEBUG_CODE(const char* name_, ) MemHandler h, int sz)
+      : TGC_DEBUG_CODE(name(name_), ) memHandler(h),
         size(sz),
-        state(State::Unregistered) {
-  }
+        state(State::Unregistered) {}
 
   ObjMeta* newMeta(int objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
@@ -106,7 +106,6 @@ class ClassInfo {
   }
   template <typename T>
   static ClassInfo* get();
-  static ClassInfo* newClassInfo(const char* name, MemHandler h, int sz);
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -286,46 +285,54 @@ class PtrEnumerator : public IPtrEnumerator {
 };
 
 template <typename T>
-ClassInfo* ClassInfo::get() {
-  auto memHandler = [](ClassInfo* cls, MemRequest r, void* param) -> void* {
+class ClassInfoHolder {
+ public:
+  static void* MemHandler(ClassInfo* cls,
+                          ClassInfo::MemRequest r,
+                          void* param) {
     switch (r) {
-      case MemRequest::Alloc: {
+      case ClassInfo::MemRequest::Alloc: {
         auto cnt = (int)param;
         auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
         return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
       }
-      case MemRequest::Dealloc: {
+      case ClassInfo::MemRequest::Dealloc: {
         auto meta = (ObjMeta*)param;
         delete[](char*) meta;
       } break;
-      case MemRequest::Dctor: {
+      case ClassInfo::MemRequest::Dctor: {
         auto meta = (ObjMeta*)param;
         auto p = (T*)meta->objPtr();
         for (size_t i = 0; i < meta->arrayLength; i++, p++) {
           p->~T();
         }
       } break;
-      case MemRequest::PtrEnumerator: {
+      case ClassInfo::MemRequest::PtrEnumerator: {
         auto meta = (ObjMeta*)param;
         return new PtrEnumerator<T>(meta);
       } break;
     }
     return nullptr;
-  };
+  }
 
-#ifdef TGC_DEBUG
-  static ClassInfo* i = newClassInfo(typeid(T).name(), memHandler, sizeof(T));
-#else
-  static ClassInfo* i = newClassInfo("", memHandler, sizeof(T));
-#endif
-  return i;
+  static ClassInfo inst;
+};
+
+template <typename T>
+details::ClassInfo tgc::details::ClassInfoHolder<T>::inst(
+    TGC_DEBUG_CODE(typeid(T).name(), ) ClassInfoHolder<T>::MemHandler,
+    sizeof(T));
+
+template <typename T>
+ClassInfo* ClassInfo::get() {
+  return &ClassInfoHolder<T>::inst;
 }
 
 void gc_collect(int steps = 256);
 
 template <typename T, typename... Args>
 ObjMeta* gc_new_meta(size_t len, Args&&... args) {
-  ClassInfo* cls = ClassInfo::get<T>();
+  auto* cls = ClassInfo::get<T>();
   cls->beginObjCreating();
   auto* meta = cls->newMeta(len);
   auto* p = (T*)meta->objPtr();

@@ -8,7 +8,7 @@ namespace tgc {
 namespace details {
 
 int ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty{0, 0, 0};
+ClassInfo ClassInfo::Empty;
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
 static Collector* collector = nullptr;
@@ -20,14 +20,12 @@ class Collector {
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
-  vector<ClassInfo*> classInfos;
   MetaSet metaSet;
   MetaSet::iterator nextSweeping;
   size_t nextRootMarking;
   State state;
 
   Collector() : state(State::RootMarking), nextRootMarking(0) {
-    classInfos.reserve(1024 * 5);
     pointers.reserve(1024 * 5);
     grayObjs.reserve(1024 * 2);
   }
@@ -37,8 +35,6 @@ class Collector {
       delete *i;
       i = metaSet.erase(i);
     }
-    for (auto i : classInfos)
-      delete i;
   }
 
   static Collector* get() {
@@ -227,6 +223,7 @@ void PtrBase::onPtrChanged() {
 // construct meta before object construction to ensure
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
+  assert(memHandler && "should not be called in global scope (before main)");
   // allocate memory & meta ahead of time for owner meta finding.
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc, (void*)objCnt);
   Collector::get()->metaSet.insert(meta);
@@ -244,12 +241,6 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
     return;
 
   subPtrOffsets.push_back(offset);
-}
-
-ClassInfo* ClassInfo::newClassInfo(const char* name, MemHandler h, int sz) {
-  auto r = new ClassInfo(name, h, sz);
-  Collector::get()->classInfos.push_back(r);
-  return r;
 }
 
 }  // namespace details
