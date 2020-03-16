@@ -319,9 +319,9 @@ class ClassInfoHolder {
 };
 
 template <typename T>
-details::ClassInfo tgc::details::ClassInfoHolder<T>::inst(
-    TGC_DEBUG_CODE(typeid(T).name(), ) ClassInfoHolder<T>::MemHandler,
-    sizeof(T));
+ClassInfo ClassInfoHolder<T>::inst{TGC_DEBUG_CODE(typeid(T).name(), )
+                                       MemHandler,
+                                   sizeof(T)};
 
 template <typename T>
 ClassInfo* ClassInfo::get() {
