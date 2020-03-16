@@ -1,8 +1,5 @@
 #include "gcptr.h"
 
-#ifdef _WIN32
-#include <crtdbg.h>
-#endif
 
 #include <assert.h>
 #include <windows.h>
@@ -319,9 +316,7 @@ auto profiled = [](const char* tag, auto cb) {
 };
 
 int main() {
-#ifdef _WIN32
-  _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-#endif
+
 
   if (0) {
     profiled("gc int", [] { gc<int> p(111); });
