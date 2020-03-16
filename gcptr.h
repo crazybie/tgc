@@ -350,7 +350,13 @@ void gc_delete(gc<T>& c) {
   }
 }
 
-// compatible with std::shared_ptr
+// used as shared_from_this
+template <typename T>
+gc<T> gc_from(T* o) {
+  return gc<T>(o);
+}
+
+// used as std::shared_ptr
 template <typename To, typename From>
 gc<To> gc_static_pointer_cast(gc<From>& from) {
   return static_cast<To*>(from.operator->());
