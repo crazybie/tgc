@@ -143,7 +143,7 @@ class ObjMeta {
     return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
   }
   char* objPtr() const {
-    return !dummyObjPtr ? (char*)this + sizeof(ObjMeta) : dummyObjPtr;
+    return dummyObjPtr ? dummyObjPtr : (char*)this + sizeof(ObjMeta);
   }
   void destroy() {
     if (!arrayLength)
@@ -155,6 +155,33 @@ class ObjMeta {
 
 static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
               "too large for small allocation");
+
+//////////////////////////////////////////////////////////////////////////
+
+class ObjPtrEnumerator : public IPtrEnumerator {
+ public:
+  size_t subPtrIdx, arrayElemIdx, arrayLength;
+  ObjMeta* meta;
+
+  ObjPtrEnumerator(ObjMeta* meta_, int len = 0)
+      : meta(meta_),
+        subPtrIdx(0),
+        arrayElemIdx(0),
+        arrayLength(len ? len : meta_->arrayLength) {}
+
+  bool hasNext() override {
+    return arrayElemIdx < arrayLength &&
+           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+  }
+  const PtrBase* getNext() override {
+    auto* clsInfo = meta->clsInfo;
+    auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
+    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
+    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+      arrayElemIdx++;
+    return (PtrBase*)subPtr;
+  }
+};
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -262,26 +289,9 @@ class gc : public GcPtr<T> {
 
 //////////////////////////////////////////////////////////////////////////
 
-template <typename C>
-class PtrEnumerator : public IPtrEnumerator {
- public:
-  size_t subPtrIdx, arrayElemIdx;
-  ObjMeta* meta;
-
-  PtrEnumerator(ObjMeta* meta_) : meta(meta_), subPtrIdx(0), arrayElemIdx(0) {}
-
-  bool hasNext() override {
-    return arrayElemIdx < meta->arrayLength &&
-           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
-  }
-  const PtrBase* getNext() override {
-    auto* clsInfo = meta->clsInfo;
-    auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
-    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
-    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
-      arrayElemIdx++;
-    return (PtrBase*)subPtr;
-  }
+template <typename T>
+struct PtrEnumerator : ObjPtrEnumerator {
+  using ObjPtrEnumerator::ObjPtrEnumerator;
 };
 
 template <typename T>
