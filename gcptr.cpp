@@ -203,11 +203,12 @@ void gc_collect(int steps) {
 }
 
 PtrBase::PtrBase() : meta(0), isRoot(1) {
-  Collector::get()->registerPtr(this);
+  auto c = collector ? collector : Collector::get();
+  c->registerPtr(this);
 }
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
-  auto c = Collector::get();
+  auto c = collector ? collector : Collector::get();
   c->registerPtr(this);
   meta = c->findOwnerMeta(obj);
 }
@@ -223,10 +224,13 @@ void PtrBase::onPtrChanged() {
 // construct meta before object construction to ensure
 // member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(int objCnt) {
+  auto c = collector ? collector : Collector::get();
+
   assert(memHandler && "should not be called in global scope (before main)");
+
   // allocate memory & meta ahead of time for owner meta finding.
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc, (void*)objCnt);
-  Collector::get()->metaSet.insert(meta);
+  c->metaSet.insert(meta);
   return meta;
 }
 

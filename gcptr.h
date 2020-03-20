@@ -83,7 +83,7 @@ class ClassInfo {
   MemHandler memHandler;
   State state : 2;
   size_t size : sizeof(void*) * 8 - 2;
-  vector<int> subPtrOffsets;
+  vector<short> subPtrOffsets;
 
   static int isCreatingObj;
   static ClassInfo Empty;
@@ -159,10 +159,10 @@ static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
 //////////////////////////////////////////////////////////////////////////
 
 class ObjPtrEnumerator : public IPtrEnumerator {
- public:
   size_t subPtrIdx, arrayElemIdx, arrayLength;
   ObjMeta* meta;
 
+ public:
   ObjPtrEnumerator(ObjMeta* meta_, int len = 0)
       : meta(meta_),
         subPtrIdx(0),
