@@ -223,13 +223,14 @@ void PtrBase::onPtrChanged() {
 
 // construct meta before object construction to ensure
 // member pointers can find the owner.
-ObjMeta* ClassInfo::newMeta(int objCnt) {
+ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   auto c = collector ? collector : Collector::get();
 
   assert(memHandler && "should not be called in global scope (before main)");
 
   // allocate memory & meta ahead of time for owner meta finding.
-  auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc, (void*)objCnt);
+  auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
+                                   reinterpret_cast<void*>(objCnt));
   c->metaSet.insert(meta);
   return meta;
 }
@@ -244,7 +245,7 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
     return;
 
-  subPtrOffsets.push_back(offset);
+  subPtrOffsets.push_back((short)offset);
 }
 
 }  // namespace details

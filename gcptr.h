@@ -4,8 +4,8 @@ by crazybie at soniced@sina.com
 
 NOTE:
 - never construct gc object in global scope.
-- TODO: exception safe.
-- TODO: thread safe.
+- TODO: exception safety.
+- TODO: thread safety.
 
 Useful refs:
 http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
@@ -81,9 +81,9 @@ class ClassInfo {
 
   TGC_DEBUG_CODE(const char* name);
   MemHandler memHandler;
-  State state : 2;
-  size_t size : sizeof(void*) * 8 - 2;
   vector<short> subPtrOffsets;
+  State state : 2;
+  unsigned int size : sizeof(unsigned int) * 8 - 2;
 
   static int isCreatingObj;
   static ClassInfo Empty;
@@ -94,7 +94,7 @@ class ClassInfo {
         size(sz),
         state(State::Unregistered) {}
 
-  ObjMeta* newMeta(int objCnt);
+  ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
   void beginObjCreating() { isCreatingObj++; }
   void endObjCreating() {
@@ -116,7 +116,7 @@ class ObjMeta {
 
   ClassInfo* clsInfo;
   MarkColor markState : 2;
-  unsigned int arrayLength : sizeof(void*) * 8 - 2;
+  unsigned int arrayLength : sizeof(unsigned int) * 8 - 2;
 
   static char* dummyObjPtr;
 
@@ -124,8 +124,8 @@ class ObjMeta {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
-  ObjMeta(ClassInfo* c, char* o, int cnt)
-      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength(cnt) {}
+  ObjMeta(ClassInfo* c, char* o, size_t cnt)
+      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength((int)cnt) {}
 
   ~ObjMeta() {
     if (arrayLength)
@@ -302,7 +302,7 @@ class ClassInfoHolder {
                           void* param) {
     switch (r) {
       case ClassInfo::MemRequest::Alloc: {
-        auto cnt = (int)param;
+        auto cnt = (size_t)param;
         auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
         return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
       }
