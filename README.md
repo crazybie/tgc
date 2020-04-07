@@ -2,7 +2,7 @@
 
 ## A True Tiny incremental mark & sweep Garbage Collector.
 
-Inspired by http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+Inspired by https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
 Warning: This project is only used in small products without heavy tests, take your own risk. 
 
