@@ -8,7 +8,7 @@ NOTE:
 - TODO: thread safety.
 
 Useful refs:
-http://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II
 
 */
 
