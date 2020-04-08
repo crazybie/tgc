@@ -1,4 +1,4 @@
-#include "gcptr.h"
+#include "tgc.h"
 
 #ifdef _WIN32
 #include <crtdbg.h>
