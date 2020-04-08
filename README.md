@@ -1,6 +1,6 @@
 # TGC
 
-## A Tiny, precise, incremental, mark & sweep, Garbage Collector.
+## A Tiny, precise, incremental, mark & sweep, Garbage Collector for C++17.
 
 Inspired by https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 
