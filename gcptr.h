@@ -3,9 +3,8 @@ TGC: Tiny incremental mark & sweep Garbage Collector.
 by crazybie at soniced@sina.com
 
 NOTE:
-- never construct gc object in global scope.
-- TODO: exception safety.
-- TODO: thread safety.
+- never construct gc objects in global scope.
+- gc pointers have a few overhead to construct & copy.
 
 Useful refs:
 https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II
@@ -15,13 +14,18 @@ https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Pa
 #pragma once
 
 #include <cassert>
+#include <set>
+#include <shared_mutex>
+#include <typeinfo>
+#include <vector>
+
+// for STL wrappers
+#include <atomic>
 #include <deque>
 #include <list>
 #include <map>
-#include <set>
-#include <typeinfo>
+#include <string>
 #include <unordered_map>
-#include <vector>
 
 //#define TGC_DEBUG
 
@@ -75,17 +79,18 @@ class IPtrEnumerator {
 class ClassInfo {
  public:
   enum class State : char { Unregistered, Registered };
-  enum class MemRequest { Alloc, Dctor, Dealloc, PtrEnumerator };
+  enum class MemRequest { Alloc, Dctor, Dealloc, NewPtrEnumerator };
   typedef void* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
   typedef IPtrEnumerator* (*EnumPtrs)(ObjMeta* meta);
 
   TGC_DEBUG_CODE(const char* name);
   MemHandler memHandler;
+  shared_mutex mutex;
   vector<short> subPtrOffsets;
   State state : 2;
   unsigned int size : sizeof(unsigned int) * 8 - 2;
 
-  static int isCreatingObj;
+  static atomic<int> isCreatingObj;
   static ClassInfo Empty;
 
   ClassInfo() : memHandler(nullptr), size(0) {}
@@ -99,10 +104,11 @@ class ClassInfo {
   void beginObjCreating() { isCreatingObj++; }
   void endObjCreating() {
     isCreatingObj--;
+    unique_lock lk{mutex};
     state = ClassInfo::State::Registered;
   }
   IPtrEnumerator* enumPtrs(ObjMeta* m) {
-    return (IPtrEnumerator*)memHandler(this, MemRequest::PtrEnumerator, m);
+    return (IPtrEnumerator*)memHandler(this, MemRequest::NewPtrEnumerator, m);
   }
   template <typename T>
   static ClassInfo* get();
@@ -131,19 +137,20 @@ class ObjMeta {
     if (arrayLength)
       destroy();
   }
-
   void operator delete(void* c) {
     auto* p = (ObjMeta*)c;
     p->clsInfo->memHandler(p->clsInfo, ClassInfo::MemRequest::Dealloc, p);
   }
   bool operator<(ObjMeta& r) const {
-    return objPtr() + clsInfo->size * arrayLength <= r.objPtr();
+    return objPtr() + clsInfo->size * arrayLength <
+           r.objPtr() + r.clsInfo->size * r.arrayLength;
   }
   bool containsPtr(char* p) {
     return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
   }
   char* objPtr() const {
-    return dummyObjPtr ? dummyObjPtr : (char*)this + sizeof(ObjMeta);
+    return clsInfo == &ClassInfo::Empty ? dummyObjPtr
+                                        : (char*)this + sizeof(ObjMeta);
   }
   void destroy() {
     if (!arrayLength)
@@ -229,7 +236,7 @@ class GcPtr : public PtrBase {
   }
   T* operator->() const { return p; }
   T& operator*() const { return *p; }
-  explicit operator bool() const { return p != 0; }
+  explicit operator bool() const { return p && meta; }
   bool operator==(const GcPtr& r) const { return meta == r.meta; }
   bool operator!=(const GcPtr& r) const { return meta != r.meta; }
   void operator=(T*) = delete;
@@ -272,7 +279,7 @@ class gc : public GcPtr<T> {
   gc() {}
   gc(nullptr_t) {}
   gc(ObjMeta* o) : base(o) {}
-  gc(T* o) : base(o) {}
+  explicit gc(T* o) : base(o) {}
 };
 
 #define TGC_DECL_AUTO_BOX(T)                                 \
@@ -317,7 +324,7 @@ class ClassInfoHolder {
           p->~T();
         }
       } break;
-      case ClassInfo::MemRequest::PtrEnumerator: {
+      case ClassInfo::MemRequest::NewPtrEnumerator: {
         auto meta = (ObjMeta*)param;
         return new PtrEnumerator<T>(meta);
       } break;
@@ -337,7 +344,10 @@ ClassInfo* ClassInfo::get() {
   return &ClassInfoHolder<T>::inst;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void gc_collect(int steps = 256);
+void gc_dumpStats();
 
 template <typename T, typename... Args>
 ObjMeta* gc_new_meta(size_t len, Args&&... args) {
@@ -368,7 +378,7 @@ gc<T> gc_from(T* o) {
 // used as std::shared_ptr
 template <typename To, typename From>
 gc<To> gc_static_pointer_cast(gc<From>& from) {
-  return static_cast<To*>(from.operator->());
+  return gc<To>(static_cast<To*>(from.operator->()));
 }
 
 template <typename T, typename... Args>
@@ -396,8 +406,9 @@ class gc_function<R(A...)> {
   gc_function(F&& f) : callable(gc_new_meta<Imp<F>>(1, forward<F>(f))) {}
 
   template <typename F>
-  void operator=(F&& f) {
+  gc_function& operator=(F&& f) {
     callable = gc_new_meta<Imp<F>>(1, forward<F>(f));
+    return *this;
   }
 
   template <typename... U>
@@ -631,6 +642,8 @@ void gc_delete(gc_set<T>& p) {
 
 using details::gc;
 using details::gc_collect;
+using details::gc_dumpStats;
+using details::gc_from;
 using details::gc_function;
 using details::gc_new;
 using details::gc_new_array;

@@ -1,36 +1,12 @@
 #include "gcptr.h"
 
-
 #include <assert.h>
-#include <windows.h>
-
 #include <chrono>
-#include <functional>
 #include <iostream>
-#include <set>
-#include <string>
-#include <vector>
+#include <string_view>
 
 using namespace tgc;
-using std::cout;
-using std::endl;
-using std::string;
-
-#ifndef _DEBUG
-#define PROFILE
-#endif
-
-#ifdef PROFILE
-#define PROFILE_LOOP for (int i = 0; i < 5000 * (rand() % 5 + 5); i++)
-#define cout comment(/)
-#define comment(a) / a
-#else
-#define PROFILE_LOOP for (int i = 0; i < 2; i++)
-#endif
-
-void collect(int steps = 2) {
-  gc_collect(steps);
-}
+using namespace std;
 
 struct b1 {
   b1(const string& s) : name(s) {
@@ -71,7 +47,7 @@ struct rc {
 };
 
 void test() {
-  PROFILE_LOOP {
+  {
     // Test "recursive" construction (insure that calls to collect during
     // construction do not cause premature collection of the node).
     gc<rc> prc = gc_new<rc>();
@@ -108,10 +84,10 @@ void test() {
 
       p3 = p2;
 
-      collect();
+      gc_collect();
     }
   }
-  collect();
+  gc_collect();
 }
 
 struct circ {
@@ -125,7 +101,7 @@ struct circ {
   string name;
 };
 void testCirc() {
-  PROFILE_LOOP {
+  {
     auto p5 = gc_new<circ>("root");
     {
       auto p6 = gc_new<circ>("first");
@@ -136,14 +112,14 @@ void testCirc() {
       p6->ptr = p7;
       p7->ptr = p6;
 
-      collect();
+      gc_collect();
     }
   }
-  collect();
+  gc_collect();
 }
 
 void testMoveCtor() {
-  PROFILE_LOOP {
+  {
     auto f = [] {
       auto t = gc_new<b1>("");
       return std::move(t);
@@ -156,11 +132,11 @@ void testMoveCtor() {
 }
 
 void testMakeGcObj() {
-  PROFILE_LOOP { auto a = gc_new<b1>("test"); }
+  { auto a = gc_new<b1>("test"); }
 }
 
 void testEmpty() {
-  PROFILE_LOOP {
+  {
     gc<b1> p(gc_new<b1>("a"));
     gc<b1> emptry;
   }
@@ -174,7 +150,7 @@ void testInsert() {
     gc<b1> p(gc_new<b1>("a"));
     objs.push_back(p);
   }
-  PROFILE_LOOP {
+  {
     gc<b1> p = gc_new<b1>("a");
     objs[rand() % objs.size()] = p;
   }
@@ -226,10 +202,10 @@ void testCircledContainer() {
     ~Node() { delCnt++; }
   };
   {
-    auto& node = gc_new<Node>();
+    auto node = gc_new<Node>();
     node->childs[0] = node;
   }
-  collect(20);
+  gc_collect();
   assert(delCnt == 1);
 }
 
@@ -240,17 +216,17 @@ bool operator<(rc& a, rc& b) {
 void testSet() {
   {
     gc_set<rc> t = gc_new_set<rc>();
-    auto& o = gc_new<rc>();
+    auto o = gc_new<rc>();
     t->insert(o);
   }
-  collect(1);
+  gc_collect(1);
 
   auto t = gc_new_set<rc>();
   gc_delete(t);
 }
 
 void testList() {
-  auto& l = gc_new_list<int>();
+  auto l = gc_new_list<int>();
   l->push_back(gc_new<int>(1));
   l->push_back(gc_new<int>(2));
   l->pop_back();
@@ -261,7 +237,7 @@ void testList() {
 }
 
 void testDeque() {
-  auto& l = gc_new_deque<int>();
+  auto l = gc_new_deque<int>();
   l->push_back(gc_new<int>(1));
   l->push_back(gc_new<int>(2));
   l->pop_back();
@@ -272,7 +248,7 @@ void testDeque() {
 }
 
 void testHashMap() {
-  auto& l = gc_new_unordered_map<int, int>();
+  auto l = gc_new_unordered_map<int, int>();
   l[1] = gc_new<int>(1);
   assert(l->size() == 1);
   assert(*l[1] == 1);
@@ -298,12 +274,31 @@ void testPrimaryImplicitCtor() {
   gc<int> a(1), b = gc_new<int>(2);
   assert(a < b);
 
-  auto& v = gc_new_vector<int>();
+  auto v = gc_new_vector<int>();
   v->push_back(1);
   assert(v[0] == 1);
 
-  gc_string s = "213";
+  using namespace std::string_literals;
+
+  gc_string s = "213"s;
   printf("%s", s->c_str());
+}
+
+void testGcFromThis() {
+  struct Base {
+    int i;
+    Base() {
+      auto p = gc_from(this);
+      assert(p);
+    }
+  };
+
+  struct Child : Base {
+    int b;
+  };
+
+  auto makeLowerBoundHasElemToCompare = gc_new<int>();
+  auto p = gc_new<Base>();
 }
 
 auto profiled = [](const char* tag, auto cb) {
@@ -316,8 +311,6 @@ auto profiled = [](const char* tag, auto cb) {
 };
 
 int main() {
-
-
   if (0) {
     profiled("gc int", [] { gc<int> p(111); });
     profiled("raw int", [] { new int(111); });
@@ -327,6 +320,7 @@ int main() {
   for (int i = 0; i < 10; i++)
 #endif
   {
+    testGcFromThis();
     testCircledContainer();
     testPrimaryImplicitCtor();
     testSet();

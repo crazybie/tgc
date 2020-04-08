@@ -7,25 +7,29 @@
 namespace tgc {
 namespace details {
 
-int ClassInfo::isCreatingObj = 0;
+atomic<int> ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty;
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
 static Collector* collector = nullptr;
 
+enum class State { RootMarking, ChildMarking, Sweeping, MaxCnt };
+static const char* StateStr[(int)State::MaxCnt] = {"RootMarking",
+                                                   "ChildMarking", "Sweeping"};
+
 class Collector {
  public:
   typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
-  enum class State { RootMarking, ChildMarking, Sweeping };
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
   MetaSet metaSet;
   MetaSet::iterator nextSweeping;
-  size_t nextRootMarking;
-  State state;
+  size_t nextRootMarking = 0;
+  State state = State::RootMarking;
+  shared_mutex mutex;
 
-  Collector() : state(State::RootMarking), nextRootMarking(0) {
+  Collector() {
     pointers.reserve(1024 * 5);
     grayObjs.reserve(1024 * 2);
   }
@@ -48,9 +52,16 @@ class Collector {
     return collector;
   }
 
+  void addObj(ObjMeta* meta) {
+    unique_lock lk{mutex, try_to_lock};
+    metaSet.insert(meta);
+  }
+
   void onPointeeChanged(PtrBase* p) {
     if (!p->meta)
       return;
+
+    shared_lock lk{mutex, try_to_lock};
     switch (state) {
       case State::RootMarking:
         if (p->index < nextRootMarking)
@@ -76,6 +87,8 @@ class Collector {
     if (p->isRoot == 1) {
       if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
         p->meta->markState = ObjMeta::MarkColor::Gray;
+
+        unique_lock lk{mutex, try_to_lock};
         grayObjs.push_back(p->meta);
       }
     }
@@ -83,7 +96,11 @@ class Collector {
 
   void registerPtr(PtrBase* p) {
     p->index = pointers.size();
-    pointers.push_back(p);
+    {
+      unique_lock lk{mutex, try_to_lock};
+      pointers.push_back(p);
+    }
+
     if (ClassInfo::isCreatingObj > 0) {
       // owner may not be the current one(e.g. constructor recursed)
       if (auto* owner = findOwnerMeta(p)) {
@@ -94,6 +111,7 @@ class Collector {
   }
 
   ObjMeta* findOwnerMeta(void* obj) {
+    shared_lock lk{mutex, try_to_lock};
     DummyMetaInfo.dummyObjPtr = (char*)obj;
     auto i = metaSet.lower_bound(&DummyMetaInfo);
     DummyMetaInfo.dummyObjPtr = nullptr;
@@ -104,18 +122,26 @@ class Collector {
   };
 
   void unregisterPtr(PtrBase* p) {
-    if (p == pointers.back()) {
-      pointers.pop_back();
-      return;
+    PtrBase* pointer;
+    {
+      unique_lock lk{mutex, try_to_lock};
+
+      if (p == pointers.back()) {
+        pointers.pop_back();
+        return;
+      } else {
+        swap(pointers[p->index], pointers.back());
+        pointer = pointers[p->index];
+        pointer->index = p->index;
+        pointers.pop_back();
+      }
     }
-    swap(pointers[p->index], pointers.back());
-    auto* pointer = pointers[p->index];
-    pointer->index = p->index;
-    pointers.pop_back();
 
     // changing of pointers may affect the rootMarking
     if (!pointer->meta)
       return;
+
+    shared_lock lk{mutex, try_to_lock};
     if (state == State::RootMarking) {
       if (p->index < nextRootMarking) {
         tryMarkRoot(pointer);
@@ -124,6 +150,8 @@ class Collector {
   }
 
   void collect(int stepCnt) {
+    unique_lock lk{mutex};
+
     switch (state) {
     _RootMarking:
     case State::RootMarking:
@@ -194,12 +222,32 @@ class Collector {
       break;
     }
   }
+
+  void dumpStats() {
+    shared_lock lk{mutex, try_to_lock};
+
+    printf("========= [gc] ========\n");
+    printf("[total pointers ] %3d\n", (unsigned)pointers.size());
+    printf("[total meta     ] %3d\n", (unsigned)metaSet.size());
+    printf("[total gray meta] %3d\n", (unsigned)grayObjs.size());
+    auto liveCnt = 0;
+    for (auto i : metaSet)
+      if (i->arrayLength)
+        liveCnt++;
+    printf("[live objects   ] %3d\n", liveCnt);
+    printf("[collector state] %s\n", StateStr[(int)state]);
+    printf("=======================\n");
+  }
 };  // namespace details
 
 //////////////////////////////////////////////////////////////////////////
 
 void gc_collect(int steps) {
   return Collector::get()->collect(steps);
+}
+
+void gc_dumpStats() {
+  Collector::get()->dumpStats();
 }
 
 PtrBase::PtrBase() : meta(0), isRoot(1) {
@@ -231,21 +279,26 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   // allocate memory & meta ahead of time for owner meta finding.
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
                                    reinterpret_cast<void*>(objCnt));
-  c->metaSet.insert(meta);
+  c->addObj(meta);
   return meta;
 }
 
 void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
-  if (state == ClassInfo::State::Registered)
-    return;
+  short offset = 0;
+  {
+    shared_lock lk{mutex};
+    if (state == ClassInfo::State::Registered)
+      return;
 
-  auto offset = (char*)p - owner->objPtr();
+    offset = (decltype(offset))((char*)p - owner->objPtr());
 
-  // constructor recursed.
-  if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
-    return;
+    // constructor recursed.
+    if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
+      return;
+  }
 
-  subPtrOffsets.push_back((short)offset);
+  unique_lock lk{mutex};
+  subPtrOffsets.push_back(offset);
 }
 
 }  // namespace details
