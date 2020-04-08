@@ -50,7 +50,9 @@ int main() {
 }
 
 ```
-See main.cpp for more tests.
+See test.cpp for more tests.
+
+A small demo here: https://github.com/crazybie/AsioTest.git
 
 ### License
 
