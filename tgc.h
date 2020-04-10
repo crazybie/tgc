@@ -249,17 +249,10 @@ class GcPtr : public PtrBase {
 
   // Methods
 
-  void reset(T* o) { GcPtr(o).swap(*this); }
   void reset(T* o, ObjMeta* n) {
     p = o;
     meta = n;
     onPtrChanged();
-  }
-  void swap(GcPtr& r) {
-    auto* temp = p;
-    auto* tempMeta = meta;
-    reset(r.p, r.meta);
-    r.reset(temp, tempMeta);
   }
 
   ObjMeta* getMeta() { return meta; }
@@ -378,7 +371,7 @@ gc<T> gc_from(T* o) {
 // used as std::shared_ptr
 template <typename To, typename From>
 gc<To> gc_static_pointer_cast(gc<From>& from) {
-  return gc<To>(static_cast<To*>(from.operator->()));
+  return from;
 }
 
 template <typename T, typename... Args>
@@ -647,7 +640,6 @@ using details::gc_from;
 using details::gc_function;
 using details::gc_new;
 using details::gc_new_array;
-using details::gc_static_pointer_cast;
 
 using details::gc_deque;
 using details::gc_new_deque;
