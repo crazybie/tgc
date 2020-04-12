@@ -11,8 +11,8 @@
 
 ### Hightlights
 - Non-instrusive
-    - used like shared_ptr.
-    - do not need to replace the globoal new.
+    - use like shared_ptr.
+    - do not need to replace the global new.
     - do not need to inherit from a common base.    
     - can even work with shared_ptr.   
 
@@ -31,7 +31,7 @@
 - Support multi-threads.
 
 - Customization
-    - can work with your own memory allocator or pool
+    - can work with your own memory allocator or pool.
     - provide hooks to redirect memory allocation.    
     - can be extended to use your custom containers.
     
