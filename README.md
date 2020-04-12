@@ -48,7 +48,7 @@
 - Marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
 - Can not use gc pointers as global variables.
 - Every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
-- Yo make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
+- To make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
 - Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
 - Double free is safe.
