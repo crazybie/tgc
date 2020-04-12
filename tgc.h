@@ -28,6 +28,7 @@ https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Pa
 #include <unordered_map>
 
 //#define TGC_DEBUG
+//#define TGC_SINGLE_THREAD
 
 #ifdef TGC_DEBUG
 #define TGC_DEBUG_CODE(...) __VA_ARGS__
@@ -38,6 +39,17 @@ https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Pa
 namespace tgc {
 namespace details {
 using namespace std;
+
+#ifdef TGC_SINGLE_THREAD
+constexpr int try_to_lock = 0;
+struct shared_mutex {};
+struct unique_lock {
+  unique_lock(...) {}
+};
+struct shared_lock {
+  shared_lock(...) {}
+};
+#endif
 
 class ObjMeta;
 
