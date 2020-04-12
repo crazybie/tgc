@@ -39,6 +39,8 @@
     - ensure no memory leaks as long as objects are correctly tracked.
 
 ### Internals
+- use triple color, mark & sweep algorithgm.
+- pointers are constructed as roots by default, unless detected as parentless.
 - construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
     - since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary pointer bringing in some valueless overhead.
     - modifying a gc pointer will trigger a gc color adjustment.
