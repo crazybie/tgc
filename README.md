@@ -1,8 +1,6 @@
 # TGC
 
-## A Tiny, precise, incremental, mark & sweep, Garbage Collector for C++17.
-
-Inspired by https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+## A Tiny, precise, incremental, mark & sweep, Garbage Collector for C++.
 
 Warning: This project is only used in small products without heavy tests, take your own risk. 
 
@@ -13,8 +11,7 @@ Warning: This project is only used in small products without heavy tests, take y
     - used like shared_ptr.
     - do not need to replace the globoal new.
     - do not need to inherit from a common base.    
-    - can even work with shared_ptr.
-    
+    - can even work with shared_ptr.   
 
 - Incremental marking and sweeping
     - won't stop the world.
@@ -40,12 +37,15 @@ Warning: This project is only used in small products without heavy tests, take y
 
 
 ### Internals
-- construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc.
-- each allocation has extra space overhead (size of two pointers) for memory tracking.
+- construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
+    - since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary object brings in some valueless overhead.
+    - modifying a gc pointer will trigger a gc color adjustment.
+- each allocation has a small extra space overhead (size of two pointers) for memory tracking.
 - marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
 - can not use gc pointers as global variables.
-- since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary object brings in some valueless overhead.
 - every class has a global object keeping the necessary meta informations used by gc, so codes using lambdas heavily may have extra memory overhead.
+- single-thread version is faster than multi-threads version, define TGC_SINGLE_THREAD to enabled single-thread version.
+- to make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
 
 ### Usage
 
@@ -53,6 +53,11 @@ Please see tests in test.cpp, and a small demo here: https://github.com/crazybie
 
 ### TODO
 - performance optimization
+
+### Refs
+
+- https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
+- Boehn GC: https://github.com/ivmai/bdwgc/
 
 ### License
 
