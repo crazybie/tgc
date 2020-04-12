@@ -13,9 +13,8 @@ Warning: This project is only used in small products without heavy tests, take y
     - used like shared_ptr.
     - do not need to replace the globoal new.
     - do not need to inherit from a common base.    
+    - can even work with shared_ptr.
     
-- Support most of containers of STL.    
-    - can be extended to use your custom containers.
 
 - Incremental marking and sweeping
     - won't stop the world.
@@ -27,32 +26,33 @@ Warning: This project is only used in small products without heavy tests, take y
     - only one header & cpp file, easier to integrate.
     - no extra threads to collect garbages.
     
-- Cross platform, No other dependencies
-    - easier to integrate.
-    - only dependent on STL.
-    
-- Can work with your own memory pool
-    - provide hooks to redirect memory allocation.
-    
+- Support most of containers of STL.        
+- Cross platform, No other dependencies, only dependent on STL.    
 - Support multi-threads.
+
+- Customization
+    - can work with your own memory allocator or pool
+    - provide hooks to redirect memory allocation.    
+    - can be extended to use your custom containers.
+    
+- Precise.
+    - ensure no memory leaks as long as objects are correctly tracked.
+
+
+### Internals
+- construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc.
+- each allocation has extra space overhead (size of two pointers) for memory tracking.
+- marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
+- can not use gc pointers as global variables.
+- since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary object brings in some valueless overhead.
+- every class has a global object keeping the necessary meta informations used by gc, so codes using lambdas heavily may have extra memory overhead.
+
+### Usage
+
+Please see tests in test.cpp, and a small demo here: https://github.com/crazybie/AsioTest.git
 
 ### TODO
 - performance optimization
-
-``` c++
-
-int main() { 
-    {
-        gc<int> v = gc_new<int>(1);
-    }
-    gc_collect();    
-    return 0;
-}
-
-```
-See test.cpp for more tests.
-
-A small demo here: https://github.com/crazybie/AsioTest.git
 
 ### License
 
