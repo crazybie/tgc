@@ -97,10 +97,10 @@ class ClassInfo {
 
   TGC_DEBUG_CODE(const char* name);
   MemHandler memHandler;
-  shared_mutex mutex;
   vector<short> subPtrOffsets;
   State state : 2;
   unsigned int size : sizeof(unsigned int) * 8 - 2;
+  shared_mutex mutex;
 
   static atomic<int> isCreatingObj;
   static ClassInfo Empty;
