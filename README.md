@@ -5,60 +5,60 @@
 参考请注明出处，谢谢。
 
 ### Motivation
-- scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- try to make things simpler compared to shared_ptr, e.g. network programs using callbacks for async io opeartions heavily.
-- a very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
+- Scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
+- Try to make things simpler compared to shared_ptr, e.g. network programs using callbacks for async io opeartions heavily.
+- A very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
 - Non-instrusive
-    - use like shared_ptr.
-    - do not need to replace the global new.
-    - do not need to inherit from a common base.    
-    - can even work with shared_ptr.   
+    - Use like shared_ptr.
+    - Do not need to replace the global new.
+    - Do not need to inherit from a common base.    
+    - Can even work with shared_ptr.   
 
 - Incremental marking and sweeping
-    - won't stop the world.
-    - can specify number of steps used for each collecting.
-    - can manually delete the obejct to control the destruction order.
+    - Won't stop the world.
+    - Can specify number of steps used for each collecting.
+    - Can manually delete the obejct to control the destruction order.
 
 - Super lightweight
-    - auto discovery memory relations at runtime *without any extra code*.
-    - only one header & cpp file, easier to integrate.
-    - no extra threads to collect garbages.
+    - Auto discovery memory relations at runtime *without any extra code*.
+    - Only one header & cpp file, easier to integrate.
+    - No extra threads to collect garbages.
     
 - Support most of containers of STL.        
-- Cross platform, No other dependencies, only dependent on STL.    
+- Cross platform, no other dependencies, only dependent on STL.    
 - Support multi-threads.
 
 - Customization
-    - can work with your own memory allocator or pool.
-    - provide hooks to redirect memory allocation.    
-    - can be extended to use your custom containers.
+    - Can work with your own memory allocator or pool.
+    - Provide hooks to redirect memory allocation.    
+    - Can be extended to use your custom containers.
     
 - Precise.
-    - ensure no memory leaks as long as objects are correctly tracked.
+    - Ensure no memory leaks as long as objects are correctly tracked.
 
 ### Internals
-- use triple color, mark & sweep algorithgm.
-- pointers are constructed as roots by default, unless detected as parentless.
-- construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
-    - since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary pointer bringing in some valueless overhead.
-    - modifying a gc pointer will trigger a gc color adjustment.
-- each allocation has a small extra space overhead (size of two pointers) for memory tracking.
-- marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
-- can not use gc pointers as global variables.
-- every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
-- to make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
+- Use triple color, mark & sweep algorithgm.
+- Pointers are constructed as roots by default, unless detected as parentless.
+- Construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
+    - Since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary pointer bringing in some valueless overhead.
+    - Modifying a gc pointer will trigger a gc color adjustment.
+- Each allocation has a small extra space overhead (size of two pointers) for memory tracking.
+- Marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
+- Can not use gc pointers as global variables.
+- Every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
+- Yo make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
-- manually call gc_delete to trigger the destrcution of the object, and left the gc to collect the memory automatically.
-- double free is protected.
+- Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
+- Double free is safe.
 
 ### Performance Advices
-- performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
-- use reference to gc pointers as function parameters as much as possible. (see internals section)
-- memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
-- single-thread version is faster than multi-threads version, define TGC_SINGLE_THREAD to enabled single-thread version.
-- use gc_new_array to get a collectable continuous array, for better performance.
+- Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
+- Use reference to gc pointers as function parameters as much as possible. (see internals section)
+- Memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
+- Single-thread version is faster than multi-threads version, define TGC_SINGLE_THREAD to enabled single-thread version.
+- Use gc_new_array to get a collectable continuous array, for better performance.
 
 ### Usage
 
