@@ -64,9 +64,6 @@
 
 Please see tests in test.cpp, and a small demo here: https://github.com/crazybie/AsioTest.git
 
-### TODO
-- performance optimization
-
 ### Refs
 
 - https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
