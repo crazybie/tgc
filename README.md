@@ -2,9 +2,12 @@
 
 ## A Tiny, precise, incremental, mark & sweep, Garbage Collector for C++.
 
-Warning: This project is only used in small products without heavy tests, take your own risk. 
-
 参考请注明出处，谢谢。
+
+### Motivation
+- scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
+- try to make things simpler compared with using shared_ptr.
+- a very good experiments to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
 - Non-instrusive
@@ -35,17 +38,25 @@ Warning: This project is only used in small products without heavy tests, take y
 - Precise.
     - ensure no memory leaks as long as objects are correctly tracked.
 
-
 ### Internals
 - construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
-    - since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary object brings in some valueless overhead.
+    - since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary pointer bringing in some valueless overhead.
     - modifying a gc pointer will trigger a gc color adjustment.
 - each allocation has a small extra space overhead (size of two pointers) for memory tracking.
 - marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
 - can not use gc pointers as global variables.
-- every class has a global object keeping the necessary meta informations used by gc, so codes using lambdas heavily may have extra memory overhead.
-- single-thread version is faster than multi-threads version, define TGC_SINGLE_THREAD to enabled single-thread version.
+- every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
 - to make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
+- gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
+- manually call gc_delete to trigger the destrcution of the object, and left the gc to collect the memory automatically.
+- double free is protected.
+
+### Performance Advices
+- performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
+- use reference to gc pointers as function parameters as much as possible. (see internals section)
+- memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
+- single-thread version is faster than multi-threads version, define TGC_SINGLE_THREAD to enabled single-thread version.
+- use gc_new_array to get a collectable continuous array, for better performance.
 
 ### Usage
 
