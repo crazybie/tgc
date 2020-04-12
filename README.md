@@ -6,7 +6,7 @@
 
 ### Motivation
 - scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- try to make things simpler compared to shared_ptr.
+- try to make things simpler compared to shared_ptr, e.g. network programs using callbacks for async io opeartions heavily.
 - a very good experiments to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
