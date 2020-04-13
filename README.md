@@ -42,7 +42,7 @@
 - Use triple color, mark & sweep algorithgm.
 - Pointers are constructed as roots by default, unless detected as children.
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
-    - Since c++ donot support ref-quanlified constructors, initialize gc pointer need to construct a temperary pointer bringing in some valueless overhead.
+    - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temperary pointer bringing in some valueless overhead.
     - Modifying a gc pointer will trigger a gc color adjustment.
 - Each allocation has a small extra space overhead (size of two pointers) for memory tracking.
 - Marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
