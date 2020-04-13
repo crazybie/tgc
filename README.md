@@ -68,6 +68,7 @@ Please see tests in test.cpp, and a small demo here: https://github.com/crazybie
 
 - https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 - Boehn GC: https://github.com/ivmai/bdwgc/
+- https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/platform/heap/BlinkGCDesign.md#Threading-model
 
 ### License
 
