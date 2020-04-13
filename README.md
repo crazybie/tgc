@@ -6,7 +6,7 @@
 
 ### Motivation
 - Scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- Try to make things simpler compared to shared_ptr, e.g. network programs using callbacks for async io opeartions heavily.
+- Try to make things simpler compared to shared_ptr and Oilpan, e.g. network programs using callbacks for async io opeartions heavily.
 - A very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
@@ -68,7 +68,7 @@ Please see tests in test.cpp, and a small demo here: https://github.com/crazybie
 
 - https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 - Boehn GC: https://github.com/ivmai/bdwgc/
-- https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/platform/heap/BlinkGCDesign.md#Threading-model
+- Oilpan GC: https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/platform/heap/BlinkGCDesign.md#Threading-model
 
 ### License
 
