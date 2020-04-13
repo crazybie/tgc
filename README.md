@@ -44,7 +44,7 @@
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
     - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temperary pointer bringing in some valueless overhead.
     - Modifying a gc pointer will trigger a gc color adjustment which is not cheap as well.
-- Each allocation has a small extra space overhead (size of two pointers) for memory tracking.
+- Each allocation has a few extra space overhead (size of two pointers), which is used for memory tracking.
 - Marking & swapping are much faster than Boehm gc, due to the deterministic pointer management.
 - Can not use gc pointers as global variables.
 - Every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
