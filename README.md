@@ -55,7 +55,7 @@
 
 ### Performance Advices
 - Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
-- Use reference to gc pointers as function parameters as much as possible. (see internals section)
+- Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
 - Memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
 - Single-threaded version is faster than multi-threads version because no locks are needed. Define TGC_SINGLE_THREAD to enabled single-threaded version.
 - Use gc_new_array to get a collectable continuous array for better performance.
