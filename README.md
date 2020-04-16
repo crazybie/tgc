@@ -6,7 +6,7 @@
 
 ### Motivation
 - Scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- Try to make things simpler compared to shared_ptr, e.g. network programs using callbacks for async io opeartions heavily.
+- Try to make things simpler compared to shared_ptr and Oilpan, e.g. network programs using callbacks for async io opeartions heavily.
 - A very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
@@ -55,7 +55,7 @@
 
 ### Performance Advices
 - Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
-- Use reference to gc pointers(e.g. function parameters) as much as possible. (see internals section)
+- Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
 - Memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
 - Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enabled multi-threaded version.
 - Use gc_new_array to get a collectable continuous array for better performance.
@@ -68,6 +68,7 @@ Please see tests in test.cpp, and a small demo here: https://github.com/crazybie
 
 - https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Part-II.
 - Boehn GC: https://github.com/ivmai/bdwgc/
+- Oilpan GC: https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/platform/heap/BlinkGCDesign.md#Threading-model
 
 ### License
 
