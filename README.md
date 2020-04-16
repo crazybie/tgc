@@ -41,7 +41,7 @@
 ### Internals
 - Use triple color, mark & sweep algorithgm.
 - Pointers are constructed as roots by default, unless detected as children.
-- Construct & copy & modify gc pointers are slower than shared_ptr, much slower than Boehm gc, so use reference to gc pointers as function parameters as much as possible.
+- Construct & copy & modify gc pointers are slower than shared_ptr, much slower than raw pointers(Boehm gc).
     - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temperary pointer bringing in some valueless overhead.
     - Modifying a gc pointer will trigger a gc color adjustment which is not cheap as well.
 - Each allocation has a few extra space overhead (size of two pointers), which is used for memory tracking.
@@ -55,9 +55,9 @@
 
 ### Performance Advices
 - Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about 10~20 slower than standard new, so donot use it in performance critical parts of the program.
-- Use reference to gc pointers as function parameters as much as possible. (see internals section)
+- Use reference to gc pointers(e.g. function parameters) as much as possible. (see internals section)
 - Memories garanteed to have no pointers in it should use shared_ptr or raw pointers instead.
-- Single-threaded version is faster than multi-threads version because no locks are needed. Define TGC_SINGLE_THREAD to enabled single-threaded version.
+- Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enabled multi-threaded version.
 - Use gc_new_array to get a collectable continuous array for better performance.
 
 ### Usage
