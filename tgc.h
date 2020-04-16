@@ -13,11 +13,16 @@ https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Pa
 
 #pragma once
 
+//#define TGC_DEBUG
+//#define TGC_MULTI_THREADED
+
 #include <cassert>
 #include <set>
-#include <shared_mutex>
 #include <typeinfo>
 #include <vector>
+#ifdef TGC_MULTI_THREADED
+#include <shared_mutex>
+#endif
 
 // for STL wrappers
 #include <atomic>
@@ -26,9 +31,6 @@ https://www.codeproject.com/Articles/938/A-garbage-collection-framework-for-C-Pa
 #include <map>
 #include <string>
 #include <unordered_map>
-
-//#define TGC_DEBUG
-//#define TGC_SINGLE_THREAD
 
 #ifdef TGC_DEBUG
 #define TGC_DEBUG_CODE(...) __VA_ARGS__
@@ -40,8 +42,9 @@ namespace tgc {
 namespace details {
 using namespace std;
 
-#ifdef TGC_SINGLE_THREAD
+#ifndef TGC_MULTI_THREADED
 constexpr int try_to_lock = 0;
+
 struct shared_mutex {};
 struct unique_lock {
   unique_lock(...) {}
@@ -113,12 +116,7 @@ class ClassInfo {
 
   ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
-  void beginObjCreating() { isCreatingObj++; }
-  void endObjCreating() {
-    isCreatingObj--;
-    unique_lock lk{mutex};
-    state = ClassInfo::State::Registered;
-  }
+  void endNewMeta();
   IPtrEnumerator* enumPtrs(ObjMeta* m) {
     return (IPtrEnumerator*)memHandler(this, MemRequest::NewPtrEnumerator, m);
   }
@@ -275,6 +273,41 @@ class GcPtr : public PtrBase {
 
 //////////////////////////////////////////////////////////////////////////
 
+class Collector {
+ public:
+  static Collector* get();
+  void addObj(ObjMeta* meta);
+  void onPointeeChanged(PtrBase* p);
+  void tryMarkRoot(PtrBase* p);
+  void registerPtr(PtrBase* p);
+  ObjMeta* findCreatingObj(PtrBase* p);
+  ObjMeta* globalFindOwnerMeta(void* obj);
+  void unregisterPtr(PtrBase* p);
+  void collect(int stepCnt);
+  void dumpStats();
+
+  enum class State { RootMarking, ChildMarking, Sweeping, MaxCnt };
+
+ private:
+  Collector();
+  ~Collector();
+
+ private:
+  typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
+  friend class ClassInfo;
+
+  vector<PtrBase*> pointers;
+  vector<ObjMeta*> grayObjs;
+  MetaSet metaSet;
+  vector<ObjMeta*> creatingObjs;
+  MetaSet::iterator nextSweeping;
+  size_t nextRootMarking = 0;
+  State state = State::RootMarking;
+  shared_mutex mutex;
+};
+
+//////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 class gc : public GcPtr<T> {
   using base = GcPtr<T>;
@@ -352,18 +385,22 @@ ClassInfo* ClassInfo::get() {
 
 //////////////////////////////////////////////////////////////////////////
 
-void gc_collect(int steps = 256);
-void gc_dumpStats();
+inline void gc_collect(int steps = 256) {
+  Collector::get()->collect(steps);
+}
+
+inline void gc_dumpStats() {
+  Collector::get()->dumpStats();
+}
 
 template <typename T, typename... Args>
 ObjMeta* gc_new_meta(size_t len, Args&&... args) {
   auto* cls = ClassInfo::get<T>();
-  cls->beginObjCreating();
   auto* meta = cls->newMeta(len);
   auto* p = (T*)meta->objPtr();
   for (size_t i = 0; i < len; i++, p++)
     new (p) T(forward<Args>(args)...);
-  cls->endObjCreating();
+  cls->endNewMeta();
   return meta;
 }
 

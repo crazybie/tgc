@@ -1,4 +1,4 @@
-#include "gcptr.h"
+#include "tgc.h"
 
 #include <assert.h>
 #include <chrono>
@@ -48,42 +48,16 @@ struct rc {
 
 void test() {
   {
-    // Test "recursive" construction (insure that calls to collect during
-    // construction do not cause premature collection of the node).
     gc<rc> prc = gc_new<rc>();
-
-    // The following lines may be uncommented to illustrate one behavior of the
-    // bug in VC++ in handling an assignment to a "real pointer", which is
-    // clearly an illegal operation.  In order for this to accurately illustrate
-    // the bug you must leave the assignment operator commented out in the
-    // gc_ptr class definition.  With out a defined assignment operator the
-    // following code results in an INTERNAL COMPILER ERROR.
-    //	gc_ptr<circ> pfail;
-    //	pfail = gcnew circ("fail");
-
-    gc<string> p1;
     {
       gc<d1> p2(gc_new<d1>("first"));
       gc<b1> p3(p2);
-      p1.reset(&p3->name);
-      // The following line may be uncommented to illustrate another behavior of
-      // the bug in VC++ in handling an assignment to a "real pointer", which is
-      // clearly an illegal operation.  In order for this to accurately
-      // illustrate the bug you must leave the assignment operator commented out
-      // in the gc_ptr class definition.  With out a defined assignment operator
-      // the following code results in no errors or warnings during compilation,
-      // but no machine code is generated for this instruction, as can be seen
-      // by stepping through the code in Debug.  To really see the danger here
-      // comment out the previous line of code as well and notice the behavior
-      // change at run time.
-      //		p1 = &p3->name;
       gc<b1> p4(gc_new<d2>("second"));
       gc<b2> pz(dynamic_cast<b2*>(&*p4));
       if ((void*)&*p4 == (void*)&*pz)
         throw std::runtime_error("unexpected");
 
       p3 = p2;
-
       gc_collect();
     }
   }
@@ -301,9 +275,10 @@ void testGcFromThis() {
   auto p = gc_new<Base>();
 }
 
+const int profilingCounts = 10000 * 100;
 auto profiled = [](const char* tag, auto cb) {
   auto start = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < 10000 * 100; i++)
+  for (int i = 0; i < profilingCounts; i++)
     cb();
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
@@ -311,10 +286,11 @@ auto profiled = [](const char* tag, auto cb) {
 };
 
 int main() {
-  if (0) {
-    profiled("gc int", [] { gc<int> p(111); });
-    profiled("raw int", [] { new int(111); });
-  }
+#ifdef PROFILE
+  profiled("gc int", [] { gc<int> p(111); });
+  profiled("raw int", [] { new int(111); });
+  gc_collect(profilingCounts);
+#endif
 
 #ifdef PROFILE
   for (int i = 0; i < 10; i++)
