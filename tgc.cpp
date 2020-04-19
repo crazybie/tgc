@@ -70,7 +70,7 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
   subPtrOffsets.push_back(offset);
 }
 
-void ClassInfo::endNewMeta() {
+void ClassInfo::endNewMeta(ObjMeta* meta) {
   isCreatingObj--;
   {
     unique_lock lk{mutex};
@@ -78,7 +78,7 @@ void ClassInfo::endNewMeta() {
   }
   {
     unique_lock lk{collector->mutex, try_to_lock};
-    collector->creatingObjs.pop_back();
+    collector->creatingObjs.remove(meta);
   }
 }
 

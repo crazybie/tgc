@@ -129,7 +129,7 @@ class ClassInfo {
 
   ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
-  void endNewMeta();
+  void endNewMeta(ObjMeta* meta);
   IPtrEnumerator* enumPtrs(ObjMeta* m) {
     return (IPtrEnumerator*)memHandler(this, MemRequest::NewPtrEnumerator, m);
   }
@@ -232,7 +232,7 @@ class GcPtr : public PtrBase {
   explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
   template <typename U>
   GcPtr(const GcPtr<U>& r) {
-    reset(r.p, r.meta);
+    reset(static_cast<T*>(r.p), r.meta);
   }
   GcPtr(const GcPtr& r) { reset(r.p, r.meta); }
   GcPtr(GcPtr&& r) {
@@ -312,7 +312,7 @@ class Collector {
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
   MetaSet metaSet;
-  vector<ObjMeta*> creatingObjs;
+  list<ObjMeta*> creatingObjs;
   MetaSet::iterator nextSweeping;
   size_t nextRootMarking = 0;
   State state = State::RootMarking;
@@ -413,7 +413,7 @@ ObjMeta* gc_new_meta(size_t len, Args&&... args) {
   auto* p = (T*)meta->objPtr();
   for (size_t i = 0; i < len; i++, p++)
     new (p) T(forward<Args>(args)...);
-  cls->endNewMeta();
+  cls->endNewMeta(meta);
   return meta;
 }
 
@@ -703,6 +703,7 @@ using details::gc_from;
 using details::gc_function;
 using details::gc_new;
 using details::gc_new_array;
+using details::gc_static_pointer_cast;
 
 using details::gc_deque;
 using details::gc_new_deque;
