@@ -289,13 +289,10 @@ class GcPtr : public PtrBase {
 class Collector {
  public:
   static Collector* get();
-  void addObj(ObjMeta* meta);
-  void onPointeeChanged(PtrBase* p);
-  void tryMarkRoot(PtrBase* p);
+  void onPointerChanged(PtrBase* p);
   void registerPtr(PtrBase* p);
-  ObjMeta* findCreatingObj(PtrBase* p);
-  ObjMeta* globalFindOwnerMeta(void* obj);
   void unregisterPtr(PtrBase* p);
+  ObjMeta* globalFindOwnerMeta(void* obj);
   void collect(int stepCnt);
   void dumpStats();
 
@@ -304,6 +301,10 @@ class Collector {
  private:
   Collector();
   ~Collector();
+
+  void tryMarkRoot(PtrBase* p);
+  ObjMeta* findCreatingObj(PtrBase* p);
+  void addMeta(ObjMeta* meta);
 
  private:
   typedef set<ObjMeta*, ObjMeta::Less> MetaSet;

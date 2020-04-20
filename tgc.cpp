@@ -33,7 +33,7 @@ PtrBase::~PtrBase() {
 }
 
 void PtrBase::onPtrChanged() {
-  collector->onPointeeChanged(this);
+  collector->onPointerChanged(this);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -47,7 +47,7 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   // allocate memory & meta ahead of time for owner meta finding.
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
                                    reinterpret_cast<void*>(objCnt));
-  c->addObj(meta);
+  c->addMeta(meta);
   isCreatingObj++;
   return meta;
 }
@@ -108,13 +108,66 @@ Collector* Collector::get() {
   return collector;
 }
 
-void Collector::addObj(ObjMeta* meta) {
+void Collector::addMeta(ObjMeta* meta) {
   unique_lock lk{mutex, try_to_lock};
   metaSet.insert(meta);
   creatingObjs.push_back(meta);
 }
 
-void Collector::onPointeeChanged(PtrBase* p) {
+void Collector::registerPtr(PtrBase* p) {
+  p->index = pointers.size();
+  {
+    unique_lock lk{mutex, try_to_lock};
+    pointers.push_back(p);
+  }
+
+  if (ClassInfo::isCreatingObj > 0) {
+    if (auto* owner = findCreatingObj(p)) {
+      p->isRoot = 0;
+      owner->clsInfo->registerSubPtr(owner, p);
+    }
+  }
+}
+
+void Collector::unregisterPtr(PtrBase* p) {
+  PtrBase* pointer;
+  {
+    unique_lock lk{mutex, try_to_lock};
+
+    if (p == pointers.back()) {
+      pointers.pop_back();
+      return;
+    } else {
+      swap(pointers[p->index], pointers.back());
+      pointer = pointers[p->index];
+      pointer->index = p->index;
+      pointers.pop_back();
+      if (!pointer->meta)
+        return;
+    }
+  }
+
+  // changing of pointers may affect the rootMarking
+  shared_lock lk{mutex, try_to_lock};
+  if (state == State::RootMarking) {
+    if (p->index < nextRootMarking) {
+      tryMarkRoot(pointer);
+    }
+  }
+}
+
+void Collector::tryMarkRoot(PtrBase* p) {
+  if (p->isRoot == 1) {
+    if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
+      p->meta->markState = ObjMeta::MarkColor::Gray;
+
+      unique_lock lk{mutex, try_to_lock};
+      grayObjs.push_back(p->meta);
+    }
+  }
+}
+
+void Collector::onPointerChanged(PtrBase* p) {
   if (!p->meta)
     return;
 
@@ -140,32 +193,6 @@ void Collector::onPointeeChanged(PtrBase* p) {
   }
 }
 
-void Collector::tryMarkRoot(PtrBase* p) {
-  if (p->isRoot == 1) {
-    if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
-      p->meta->markState = ObjMeta::MarkColor::Gray;
-
-      unique_lock lk{mutex, try_to_lock};
-      grayObjs.push_back(p->meta);
-    }
-  }
-}
-
-void Collector::registerPtr(PtrBase* p) {
-  p->index = pointers.size();
-  {
-    unique_lock lk{mutex, try_to_lock};
-    pointers.push_back(p);
-  }
-
-  if (ClassInfo::isCreatingObj > 0) {
-    if (auto* owner = findCreatingObj(p)) {
-      p->isRoot = 0;
-      owner->clsInfo->registerSubPtr(owner, p);
-    }
-  }
-}
-
 ObjMeta* Collector::findCreatingObj(PtrBase* p) {
   shared_lock lk{mutex, try_to_lock};
   // owner may not be the current one(e.g. constructor recursed)
@@ -188,34 +215,6 @@ ObjMeta* Collector::globalFindOwnerMeta(void* obj) {
   return *i;
 }
 
-void Collector::unregisterPtr(PtrBase* p) {
-  PtrBase* pointer;
-  {
-    unique_lock lk{mutex, try_to_lock};
-
-    if (p == pointers.back()) {
-      pointers.pop_back();
-      return;
-    } else {
-      swap(pointers[p->index], pointers.back());
-      pointer = pointers[p->index];
-      pointer->index = p->index;
-      pointers.pop_back();
-    }
-  }
-
-  // changing of pointers may affect the rootMarking
-  if (!pointer->meta)
-    return;
-
-  shared_lock lk{mutex, try_to_lock};
-  if (state == State::RootMarking) {
-    if (p->index < nextRootMarking) {
-      tryMarkRoot(pointer);
-    }
-  }
-}
-
 void Collector::collect(int stepCnt) {
   unique_lock lk{mutex};
 
@@ -228,6 +227,7 @@ void Collector::collect(int stepCnt) {
       auto meta = p->meta;
       if (!meta)
         continue;
+      // for containers
       auto it = meta->clsInfo->enumPtrs(meta);
       for (; it->hasNext();) {
         it->getNext()->isRoot = 0;
