@@ -213,6 +213,11 @@ class ObjPtrEnumerator : public IPtrEnumerator {
   }
 };
 
+template <typename T>
+struct PtrEnumerator : ObjPtrEnumerator {
+  using ObjPtrEnumerator::ObjPtrEnumerator;
+};
+
 //////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -318,6 +323,8 @@ class Collector {
   size_t nextRootMarking = 0;
   State state = State::RootMarking;
   shared_mutex mutex;
+
+  static Collector* inst;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -348,11 +355,6 @@ class gc : public GcPtr<T> {
   using gc_##GcAliasName = gc<T>;
 
 //////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-struct PtrEnumerator : ObjPtrEnumerator {
-  using ObjPtrEnumerator::ObjPtrEnumerator;
-};
 
 template <typename T>
 class ClassInfoHolder {

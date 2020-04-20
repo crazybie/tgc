@@ -11,43 +11,43 @@ atomic<int> ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty;
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
-static Collector* collector = nullptr;
+Collector* Collector::inst = nullptr;
 static const char* StateStr[(int)Collector::State::MaxCnt] = {
     "RootMarking", "ChildMarking", "Sweeping"};
 
 //////////////////////////////////////////////////////////////////////////
 
 PtrBase::PtrBase() : meta(0), isRoot(1) {
-  auto c = collector ? collector : Collector::get();
+  auto* c = Collector::get();
   c->registerPtr(this);
 }
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
-  auto c = collector ? collector : Collector::get();
+  auto* c = Collector::get();
   c->registerPtr(this);
   meta = c->globalFindOwnerMeta(obj);
 }
 
 PtrBase::~PtrBase() {
-  collector->unregisterPtr(this);
+  Collector::get()->unregisterPtr(this);
 }
 
 void PtrBase::onPtrChanged() {
-  collector->onPointerChanged(this);
+  Collector::get()->onPointerChanged(this);
 }
 
 //////////////////////////////////////////////////////////////////////////
 
-// construct meta before object construction to ensure
-// member pointers can find the owner.
 ObjMeta* ClassInfo::newMeta(size_t objCnt) {
-  auto c = collector ? collector : Collector::get();
-
   assert(memHandler && "should not be called in global scope (before main)");
-  // allocate memory & meta ahead of time for owner meta finding.
+
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
                                    reinterpret_cast<void*>(objCnt));
-  c->addMeta(meta);
+
+  // register meta then the constructor can find the owner later via
+  // gc_from(this).
+  Collector::get()->addMeta(meta);
+
   isCreatingObj++;
   return meta;
 }
@@ -77,8 +77,9 @@ void ClassInfo::endNewMeta(ObjMeta* meta) {
     state = ClassInfo::State::Registered;
   }
   {
-    unique_lock lk{collector->mutex, try_to_lock};
-    collector->creatingObjs.remove(meta);
+    auto* c = Collector::get();
+    unique_lock lk{c->mutex, try_to_lock};
+    c->creatingObjs.remove(meta);
   }
 }
 
@@ -97,15 +98,15 @@ Collector::~Collector() {
 }
 
 Collector* Collector::get() {
-  if (!collector) {
+  if (!inst) {
 #ifdef _WIN32
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
-    collector = new Collector();
-    atexit([] { delete collector; });
+    inst = new Collector();
+    atexit([] { delete inst; });
   }
-  return collector;
+  return inst;
 }
 
 void Collector::addMeta(ObjMeta* meta) {
