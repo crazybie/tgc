@@ -6,7 +6,7 @@
 
 ### Motivation
 - Scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- Try to make things simpler compared to shared_ptr and Oilpan, e.g. networking programs using callbacks for async io opeartions heavily.
+- Try to make things simpler compared to shared_ptr and Oilpan, e.g. networking programs using callbacks for async io opeartions heavily.     
 - A very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
@@ -38,6 +38,14 @@
 - Precise.
     - Ensure no memory leaks as long as objects are correctly tracked.
 
+### Comparation
+-  Pros over shared_ptr:
+    - no need of weak_ptr to break the circular references.
+    - no shared_from_this is needed for gc pointer.
+    - gc_from(this) works in the constructor where shared_ptr is not.
+    - construct gc pointer from raw pointer is safe to call any times where shared_ptr is not because it will reset the ref counter    
+    - cann't predicate the number of objects destructed in complex scenarios when clear a shared_ptr, but not for gc pointers as you can control the collection steps to run.
+
 ### Internals
 - Use triple color, mark & sweep algorithgm.
 - Pointers are constructed as roots by default, unless detected as children.
@@ -54,12 +62,14 @@
 - Double free is safe.
 - For the multi-threaded version, the collection function should be invoked to run in the main thread therefore the destructors can be triggered in the main thread as well.
 
+
 ### Performance Advices
 - Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about ~10 slower than standard new, so benchmark your program after used in the performance critical parts(e.g. VM of another language).
 - Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
 - Memories garanteed to have no pointers in it can use shared_ptr or raw pointers to make recliaming faster.
 - Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enable the multi-threaded version.
 - Use gc_new_array to get a collectable continuous array for better performance.
+- You can dynamically specify the step count(the default 255) for one collecting phase by timing your event loop, to fit your performance requirement.
 
 ### Usage
 
