@@ -54,7 +54,7 @@
 - Double free is safe.
 
 ### Performance Advices
-- Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about ~10 slower than standard new, so donot use it in performance critical parts of the program, e.g. VMs of other languages.
+- Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about ~10 slower than standard new, so benchmark your program after used in the performance critical parts(e.g. VM of another language).
 - Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
 - Memories garanteed to have no pointers in it can use shared_ptr or raw pointers to make recliaming faster.
 - Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enabled multi-threaded version.
