@@ -6,7 +6,7 @@
 
 ### Motivation
 - Scenarios that shared_ptr can't solve, e.g. object dependencies are dynamically constructed with no chance to recognize the usage of shared & weak pointers.
-- Try to make things simpler compared to shared_ptr and Oilpan, e.g. network programs using callbacks for async io opeartions heavily.
+- Try to make things simpler compared to shared_ptr and Oilpan, e.g. networking programs using callbacks for async io opeartions heavily.
 - A very good experiment to design a gc dedicated to the C++ language and see how the language features can help.    
 
 ### Hightlights
