@@ -19,7 +19,7 @@
 - Incremental marking and sweeping
     - Won't stop the world.
     - Can specify number of steps used for each collecting.
-    - Can manually delete the obejct to control the destruction order.
+    - Can manually delete the object to control the destruction order.
 
 - Super lightweight
     - Auto discovery memory relations at runtime *without any extra code*.
