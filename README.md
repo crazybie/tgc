@@ -52,6 +52,7 @@
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
 - Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
 - Double free is safe.
+- For the multi-threaded version, the collection function should be invoked to run in the main thread therefore the destructors can be triggered in the main thread.
 
 ### Performance Advices
 - Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about ~10 slower than standard new, so benchmark your program after used in the performance critical parts(e.g. VM of another language).
