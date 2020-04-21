@@ -336,7 +336,7 @@ class gc : public GcPtr<T> {
     operator T&() { return operator*(); }                    \
     operator T&() const { return operator*(); }              \
   };                                                         \
-  using gc_##GcAliasName = gc<T>;
+  using GcAliasName = gc<T>;
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -710,16 +710,16 @@ using details::gc_unordered_map;
 using details::gc_new_vector;
 using details::gc_vector;
 
-TGC_DECL_AUTO_BOX(char, char);
-TGC_DECL_AUTO_BOX(unsigned char, uchar);
-TGC_DECL_AUTO_BOX(short, short);
-TGC_DECL_AUTO_BOX(unsigned short, ushort);
-TGC_DECL_AUTO_BOX(int, int);
-TGC_DECL_AUTO_BOX(unsigned int, uint);
-TGC_DECL_AUTO_BOX(float, float);
-TGC_DECL_AUTO_BOX(double, double);
-TGC_DECL_AUTO_BOX(long, long);
-TGC_DECL_AUTO_BOX(unsigned long, ulong);
-TGC_DECL_AUTO_BOX(std::string, string);
+TGC_DECL_AUTO_BOX(char, gc_char);
+TGC_DECL_AUTO_BOX(unsigned char, gc_uchar);
+TGC_DECL_AUTO_BOX(short, gc_short);
+TGC_DECL_AUTO_BOX(unsigned short, gc_ushort);
+TGC_DECL_AUTO_BOX(int, gc_int);
+TGC_DECL_AUTO_BOX(unsigned int, gc_uint);
+TGC_DECL_AUTO_BOX(float, gc_float);
+TGC_DECL_AUTO_BOX(double, gc_double);
+TGC_DECL_AUTO_BOX(long, gc_long);
+TGC_DECL_AUTO_BOX(unsigned long, gc_ulong);
+TGC_DECL_AUTO_BOX(std::string, gc_string);
 
 }  // namespace tgc
