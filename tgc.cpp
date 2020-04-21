@@ -11,9 +11,54 @@ atomic<int> ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty;
 ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
+
 Collector* Collector::inst = nullptr;
 static const char* StateStr[(int)Collector::State::MaxCnt] = {
     "RootMarking", "ChildMarking", "Sweeping"};
+
+//////////////////////////////////////////////////////////////////////////
+
+char* ObjMeta::objPtr() const {
+  return clsInfo == &ClassInfo::Empty ? dummyObjPtr
+                                      : (char*)this + sizeof(ObjMeta);
+}
+
+void ObjMeta::destroy() {
+  if (!arrayLength)
+    return;
+  clsInfo->memHandler(clsInfo, ClassInfo::MemRequest::Dctor, this);
+  arrayLength = 0;
+}
+
+void ObjMeta::operator delete(void* c) {
+  auto* p = (ObjMeta*)c;
+  p->clsInfo->memHandler(p->clsInfo, ClassInfo::MemRequest::Dealloc, p);
+}
+
+bool ObjMeta::operator<(ObjMeta& r) const {
+  return objPtr() + clsInfo->size * arrayLength <
+         r.objPtr() + r.clsInfo->size * r.arrayLength;
+}
+
+bool ObjMeta::containsPtr(char* p) {
+  return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+bool ObjPtrEnumerator::hasNext() {
+  return arrayElemIdx < arrayLength &&
+         subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+}
+
+const PtrBase* ObjPtrEnumerator::getNext() {
+  auto* clsInfo = meta->clsInfo;
+  auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
+  auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
+  if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+    arrayElemIdx++;
+  return (PtrBase*)subPtr;
+}
 
 //////////////////////////////////////////////////////////////////////////
 

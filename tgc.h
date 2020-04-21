@@ -81,23 +81,42 @@ struct atomic {
 #endif
 
 class ObjMeta;
+class ClassInfo;
+class PtrBase;
+class IPtrEnumerator;
 
 //////////////////////////////////////////////////////////////////////////
 
-class PtrBase {
-  friend class Collector;
-  friend class ClassInfo;
+class ObjMeta {
+ public:
+  enum class MarkColor { Unmarked, Gray, Alive };
 
- protected:
-  mutable unsigned int isRoot : 1;
-  unsigned int index : 31;
-  ObjMeta* meta;
+  ClassInfo* clsInfo;
+  MarkColor markState : 2;
+  unsigned int arrayLength : sizeof(unsigned int) * 8 - 2;
 
-  PtrBase();
-  PtrBase(void* obj);
-  ~PtrBase();
-  void onPtrChanged();
+  static char* dummyObjPtr;
+
+  struct Less {
+    bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
+  };
+
+  ObjMeta(ClassInfo* c, char* o, size_t cnt)
+      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength((int)cnt) {}
+
+  ~ObjMeta() {
+    if (arrayLength)
+      destroy();
+  }
+  void operator delete(void* c);
+  bool operator<(ObjMeta& r) const;
+  bool containsPtr(char* p);
+  char* objPtr() const;
+  void destroy();
 };
+
+static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
+              "too large for small allocation");
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -113,6 +132,26 @@ class IPtrEnumerator {
     return buf;
   }
   void operator delete(void*) {}
+};
+
+class ObjPtrEnumerator : public IPtrEnumerator {
+  size_t subPtrIdx, arrayElemIdx, arrayLength;
+  ObjMeta* meta;
+
+ public:
+  ObjPtrEnumerator(ObjMeta* meta_, int len = 0)
+      : meta(meta_),
+        subPtrIdx(0),
+        arrayElemIdx(0),
+        arrayLength(len ? len : meta_->arrayLength) {}
+
+  bool hasNext() override;
+  const PtrBase* getNext() override;
+};
+
+template <typename T>
+struct PtrEnumerator : ObjPtrEnumerator {
+  using ObjPtrEnumerator::ObjPtrEnumerator;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -145,92 +184,65 @@ class ClassInfo {
   IPtrEnumerator* enumPtrs(ObjMeta* m) {
     return (IPtrEnumerator*)memHandler(this, MemRequest::NewPtrEnumerator, m);
   }
+
   template <typename T>
-  static ClassInfo* get();
-};
+  static ClassInfo* get() {
+    return &Holder<T>::inst;
+  }
 
-//////////////////////////////////////////////////////////////////////////
+ private:
+  template <typename T>
+  struct Holder {
+    static void* MemHandler(ClassInfo* cls, MemRequest r, void* param) {
+      switch (r) {
+        case MemRequest::Alloc: {
+          auto cnt = (size_t)param;
+          auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
+          return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
+        }
+        case MemRequest::Dealloc: {
+          auto meta = (ObjMeta*)param;
+          delete[](char*) meta;
+        } break;
+        case MemRequest::Dctor: {
+          auto meta = (ObjMeta*)param;
+          auto p = (T*)meta->objPtr();
+          for (size_t i = 0; i < meta->arrayLength; i++, p++) {
+            p->~T();
+          }
+        } break;
+        case MemRequest::NewPtrEnumerator: {
+          auto meta = (ObjMeta*)param;
+          return new PtrEnumerator<T>(meta);
+        } break;
+      }
+      return nullptr;
+    }
 
-class ObjMeta {
- public:
-  enum class MarkColor { Unmarked, Gray, Alive };
-
-  ClassInfo* clsInfo;
-  MarkColor markState : 2;
-  unsigned int arrayLength : sizeof(unsigned int) * 8 - 2;
-
-  static char* dummyObjPtr;
-
-  struct Less {
-    bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
+    static ClassInfo inst;
   };
-
-  ObjMeta(ClassInfo* c, char* o, size_t cnt)
-      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength((int)cnt) {}
-
-  ~ObjMeta() {
-    if (arrayLength)
-      destroy();
-  }
-  void operator delete(void* c) {
-    auto* p = (ObjMeta*)c;
-    p->clsInfo->memHandler(p->clsInfo, ClassInfo::MemRequest::Dealloc, p);
-  }
-  bool operator<(ObjMeta& r) const {
-    return objPtr() + clsInfo->size * arrayLength <
-           r.objPtr() + r.clsInfo->size * r.arrayLength;
-  }
-  bool containsPtr(char* p) {
-    return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
-  }
-  char* objPtr() const {
-    return clsInfo == &ClassInfo::Empty ? dummyObjPtr
-                                        : (char*)this + sizeof(ObjMeta);
-  }
-  void destroy() {
-    if (!arrayLength)
-      return;
-    clsInfo->memHandler(clsInfo, ClassInfo::MemRequest::Dctor, this);
-    arrayLength = 0;
-  }
-};
-
-static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
-              "too large for small allocation");
-
-//////////////////////////////////////////////////////////////////////////
-
-class ObjPtrEnumerator : public IPtrEnumerator {
-  size_t subPtrIdx, arrayElemIdx, arrayLength;
-  ObjMeta* meta;
-
- public:
-  ObjPtrEnumerator(ObjMeta* meta_, int len = 0)
-      : meta(meta_),
-        subPtrIdx(0),
-        arrayElemIdx(0),
-        arrayLength(len ? len : meta_->arrayLength) {}
-
-  bool hasNext() override {
-    return arrayElemIdx < arrayLength &&
-           subPtrIdx < meta->clsInfo->subPtrOffsets.size();
-  }
-  const PtrBase* getNext() override {
-    auto* clsInfo = meta->clsInfo;
-    auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
-    auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
-    if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
-      arrayElemIdx++;
-    return (PtrBase*)subPtr;
-  }
 };
 
 template <typename T>
-struct PtrEnumerator : ObjPtrEnumerator {
-  using ObjPtrEnumerator::ObjPtrEnumerator;
-};
+ClassInfo ClassInfo::Holder<T>::inst{
+    TGC_DEBUG_CODE(typeid(T).name(), ) MemHandler, sizeof(T)};
 
 //////////////////////////////////////////////////////////////////////////
+
+class PtrBase {
+  friend class Collector;
+  friend class ClassInfo;
+
+ protected:
+  ObjMeta* meta;
+  mutable unsigned int isRoot : 1;
+  unsigned int index : 31;
+
+  PtrBase();
+  PtrBase(void* obj);
+  ~PtrBase();
+  void onPtrChanged();
+};
 
 template <typename T>
 class GcPtr : public PtrBase {
@@ -301,6 +313,31 @@ class GcPtr : public PtrBase {
   T* p;
 };
 
+template <typename T>
+class gc : public GcPtr<T> {
+  using base = GcPtr<T>;
+
+ public:
+  using GcPtr<T>::GcPtr;
+  gc() {}
+  gc(nullptr_t) {}
+  gc(ObjMeta* o) : base(o) {}
+  explicit gc(T* o) : base(o) {}
+};
+
+#define TGC_DECL_AUTO_BOX(T, GcAliasName)                    \
+  template <>                                                \
+  class details::gc<T> : public details::GcPtr<T> {          \
+   public:                                                   \
+    using GcPtr<T>::GcPtr;                                   \
+    gc(const T& i) : GcPtr(details::gc_new_meta<T>(1, i)) {} \
+    gc() {}                                                  \
+    gc(nullptr_t) {}                                         \
+    operator T&() { return operator*(); }                    \
+    operator T&() const { return operator*(); }              \
+  };                                                         \
+  using gc_##GcAliasName = gc<T>;
+
 //////////////////////////////////////////////////////////////////////////
 
 class Collector {
@@ -338,80 +375,6 @@ class Collector {
 
   static Collector* inst;
 };
-
-//////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-class gc : public GcPtr<T> {
-  using base = GcPtr<T>;
-
- public:
-  using GcPtr<T>::GcPtr;
-  gc() {}
-  gc(nullptr_t) {}
-  gc(ObjMeta* o) : base(o) {}
-  explicit gc(T* o) : base(o) {}
-};
-
-#define TGC_DECL_AUTO_BOX(T, GcAliasName)                    \
-  template <>                                                \
-  class details::gc<T> : public details::GcPtr<T> {          \
-   public:                                                   \
-    using GcPtr<T>::GcPtr;                                   \
-    gc(const T& i) : GcPtr(details::gc_new_meta<T>(1, i)) {} \
-    gc() {}                                                  \
-    gc(nullptr_t) {}                                         \
-    operator T&() { return operator*(); }                    \
-    operator T&() const { return operator*(); }              \
-  };                                                         \
-  using gc_##GcAliasName = gc<T>;
-
-//////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-class ClassInfoHolder {
- public:
-  static void* MemHandler(ClassInfo* cls,
-                          ClassInfo::MemRequest r,
-                          void* param) {
-    switch (r) {
-      case ClassInfo::MemRequest::Alloc: {
-        auto cnt = (size_t)param;
-        auto* p = new char[cls->size * cnt + sizeof(ObjMeta)];
-        return new (p) ObjMeta(cls, p + sizeof(ObjMeta), cnt);
-      }
-      case ClassInfo::MemRequest::Dealloc: {
-        auto meta = (ObjMeta*)param;
-        delete[](char*) meta;
-      } break;
-      case ClassInfo::MemRequest::Dctor: {
-        auto meta = (ObjMeta*)param;
-        auto p = (T*)meta->objPtr();
-        for (size_t i = 0; i < meta->arrayLength; i++, p++) {
-          p->~T();
-        }
-      } break;
-      case ClassInfo::MemRequest::NewPtrEnumerator: {
-        auto meta = (ObjMeta*)param;
-        return new PtrEnumerator<T>(meta);
-      } break;
-    }
-    return nullptr;
-  }
-
-  static ClassInfo inst;
-};
-
-template <typename T>
-ClassInfo ClassInfoHolder<T>::inst{
-    TGC_DEBUG_CODE(typeid(T).name(), ) MemHandler, sizeof(T)};
-
-template <typename T>
-ClassInfo* ClassInfo::get() {
-  return &ClassInfoHolder<T>::inst;
-}
-
-//////////////////////////////////////////////////////////////////////////
 
 inline void gc_collect(int steps = 256) {
   Collector::get()->collect(steps);
