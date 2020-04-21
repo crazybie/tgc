@@ -35,11 +35,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <typeinfo>
 #include <vector>
 #ifdef TGC_MULTI_THREADED
+#include <atomic>
 #include <shared_mutex>
 #endif
 
 // for STL wrappers
-#include <atomic>
+
 #include <deque>
 #include <list>
 #include <map>
@@ -54,9 +55,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace tgc {
 namespace details {
+
 using namespace std;
 
 #ifndef TGC_MULTI_THREADED
+
 constexpr int try_to_lock = 0;
 
 struct shared_mutex {};
@@ -66,6 +69,15 @@ struct unique_lock {
 struct shared_lock {
   shared_lock(...) {}
 };
+template <typename T>
+struct atomic {
+  T value;
+  atomic(T v) : value{v} {}
+  void operator++(T) { value++; }
+  void operator--(T) { value--; }
+  operator const T&() { return value; }
+};
+
 #endif
 
 class ObjMeta;
