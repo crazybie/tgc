@@ -275,7 +275,26 @@ void testGcFromThis() {
   auto p = gc_new<Base>();
 }
 
+void testDynamicCast() {
+  struct BaseA {
+    int a;
+    virtual ~BaseA() {}
+  };
+  struct BaseB {
+    float f;
+    virtual ~BaseB() {}
+  };
+  struct Sub : BaseA, BaseB {
+    int c;
+  };
+  auto sub = gc_new<Sub>();
+  gc<BaseB> baseB = sub;
+  auto sub2 = gc_dynamic_pointer_cast<Sub>(baseB);
+  assert(sub == sub2);
+}
+
 const int profilingCounts = 10000 * 100;
+
 auto profiled = [](const char* tag, auto cb) {
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < profilingCounts; i++)
@@ -296,6 +315,7 @@ int main() {
   for (int i = 0; i < 10; i++)
 #endif
   {
+    testDynamicCast();
     testGcFromThis();
     testCircledContainer();
     testPrimaryImplicitCtor();

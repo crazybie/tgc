@@ -440,6 +440,14 @@ gc<To> gc_static_pointer_cast(gc<From>& from) {
   return from;
 }
 
+// used as std::shared_ptr
+template <typename To, typename From>
+gc<To> gc_dynamic_pointer_cast(gc<From>& from) {
+  gc<To> r;
+  r.reset(dynamic_cast<To*>(from.operator->()), from.getMeta());
+  return r;
+}
+
 template <typename T, typename... Args>
 gc<T> gc_new(Args&&... args) {
   return gc_new_meta<T>(1, forward<Args>(args)...);
@@ -702,6 +710,7 @@ void gc_delete(gc_set<T>& p) {
 using details::gc;
 using details::gc_collect;
 using details::gc_dumpStats;
+using details::gc_dynamic_pointer_cast;
 using details::gc_from;
 using details::gc_function;
 using details::gc_new;
