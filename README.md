@@ -15,26 +15,20 @@
     - Do not need to replace the global new.
     - Do not need to inherit from a common base.    
     - Can even work with shared_ptr.   
-
 - Incremental marking and sweeping
     - Won't stop the world.
     - Can specify number of steps used for each collecting.
     - Can manually delete the object to control the destruction order.
-
-- Super lightweight
-    - Auto discovery memory relations at runtime *without any extra code*.
+- Super lightweight    
     - Only one header & cpp file, easier to integrate.
-    - No extra threads to collect garbages.
-    
+    - No extra threads to collect garbages.    
 - Support most of containers of STL.        
 - Cross platform, no other dependencies, only dependent on STL.    
 - Support multi-threads.
-
 - Customization
-    - Can work with your own memory allocator or pool.
+    - Can work with your own memory allocator and pool.
     - Provide hooks to redirect memory allocation.    
-    - Can be extended to use your custom containers.
-    
+    - Can be extended to use your custom containers.    
 - Precise.
     - Ensure no memory leaks as long as objects are correctly tracked.
 
