@@ -9,10 +9,9 @@ namespace details {
 
 atomic<int> ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty;
-ObjMeta DummyMetaInfo(&ClassInfo::Empty, 0, 0);
 char* ObjMeta::dummyObjPtr = 0;
-
 Collector* Collector::inst = nullptr;
+
 static const char* StateStr[(int)Collector::State::MaxCnt] = {
     "RootMarking", "ChildMarking", "Sweeping"};
 
@@ -252,9 +251,9 @@ ObjMeta* Collector::findCreatingObj(PtrBase* p) {
 ObjMeta* Collector::globalFindOwnerMeta(void* obj) {
   shared_lock lk{mutex, try_to_lock};
 
-  DummyMetaInfo.dummyObjPtr = (char*)obj;
-  auto i = metaSet.lower_bound(&DummyMetaInfo);
-  DummyMetaInfo.dummyObjPtr = nullptr;
+  ObjMeta dummyMeta(&ClassInfo::Empty, 0, 0);
+  dummyMeta.dummyObjPtr = (char*)obj;
+  auto i = metaSet.lower_bound(&dummyMeta);
   if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
     return nullptr;
   }
