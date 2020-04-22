@@ -89,7 +89,7 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
                                    reinterpret_cast<void*>(objCnt));
 
   try {
-    // register meta then the constructor can find the owner later via
+    // register meta so the constructor of pointers can find the owner later via
     // gc_from(this).
     Collector::get()->addMeta(meta);
   } catch (std::bad_alloc&) {
@@ -103,10 +103,8 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
 
 void ClassInfo::endNewMeta(ObjMeta* meta) {
   isCreatingObj--;
-
   if (!meta)
     return;
-
   {
     unique_lock lk{mutex};
     state = ClassInfo::State::Registered;
@@ -114,6 +112,7 @@ void ClassInfo::endNewMeta(ObjMeta* meta) {
   {
     auto* c = Collector::get();
     unique_lock lk{c->mutex, try_to_lock};
+    // stack is no feasible for multi-threaded version.
     c->creatingObjs.remove(meta);
   }
 }
