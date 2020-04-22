@@ -101,19 +101,21 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   return meta;
 }
 
-void ClassInfo::endNewMeta(ObjMeta* meta) {
+void ClassInfo::endNewMeta(ObjMeta* meta, bool failed) {
   isCreatingObj--;
-  if (!meta)
-    return;
-  {
+  if (!failed) {
     unique_lock lk{mutex};
     state = ClassInfo::State::Registered;
   }
+
   {
     auto* c = Collector::get();
     unique_lock lk{c->mutex, try_to_lock};
-    // stack is no feasible for multi-threaded version.
     c->creatingObjs.remove(meta);
+    if (failed) {
+      c->metaSet.erase(meta);
+      memHandler(this, MemRequest::Dealloc, meta);
+    }
   }
 }
 

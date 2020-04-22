@@ -180,7 +180,7 @@ class ClassInfo {
 
   ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
-  void endNewMeta(ObjMeta* meta);
+  void endNewMeta(ObjMeta* meta, bool failed);
   IPtrEnumerator* enumPtrs(ObjMeta* m) {
     return (IPtrEnumerator*)memHandler(this, MemRequest::NewPtrEnumerator, m);
   }
@@ -367,6 +367,7 @@ class Collector {
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
   MetaSet metaSet;
+  // stack is no feasible for multi-threaded version.
   list<ObjMeta*> creatingObjs;
   MetaSet::iterator nextSweeping;
   size_t nextRootMarking = 0;
@@ -398,11 +399,11 @@ ObjMeta* gc_new_meta(size_t len, Args&&... args) {
     for (auto j = i; j > 0; j--, p--) {
       p->~T();
     }
-    cls->endNewMeta(nullptr);
+    cls->endNewMeta(meta, true);
     throw;
   }
 
-  cls->endNewMeta(meta);
+  cls->endNewMeta(meta, false);
   return meta;
 }
 
