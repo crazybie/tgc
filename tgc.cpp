@@ -262,10 +262,11 @@ ObjMeta* Collector::globalFindOwnerMeta(void* obj) {
   ObjMeta dummyMeta(&ClassInfo::Empty, 0, 0);
   dummyMeta.dummyObjPtr = (char*)obj;
   auto i = metaSet.lower_bound(&dummyMeta);
-  if (i == metaSet.end() || !(*i)->containsPtr((char*)obj)) {
+  if (i != metaSet.end() && (*i)->containsPtr((char*)obj)) {
+    return *i;
+  } else {
     return nullptr;
   }
-  return *i;
 }
 
 void Collector::collect(int stepCnt) {
