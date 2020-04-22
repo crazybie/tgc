@@ -65,8 +65,8 @@
 - Use gc_new_array to get a collectable continuous array for better performance.
 - Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
 - For realtime applications:
-    - Static strategy: just call gc_collect with a suitable step count regularyly in each frame of the event loop.
-    - Dynamic strategy: you can specify a small step count(the default 255) for one collecting call and time it to see if have still time left to collect again, otherwise do collecting at the next time.
+    - Static strategy: just call gc_collect with a suitable step count regulaly in each frame of the event loop.
+    - Dynamic strategy: you can specify a small step count(the default 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
 
 ### Usage
 
