@@ -321,6 +321,23 @@ void testException() {
   assert(details::ClassInfo::get<Test>()->isCreatingObj == 0);
 }
 
+void testCollection() {
+  struct Circled {
+    gc<Circled> child;
+  };
+
+  {
+    int cnt = 1000;
+    for (int i = 0; i < cnt; i++) {
+      auto s = gc_new<Circled>();
+      s->child = s;
+    }
+    gc_dumpStats();
+    gc_collect(cnt * 2);
+    gc_dumpStats();
+  }
+}
+
 const int profilingCounts = 10000 * 100;
 
 auto profiled = [](const char* tag, auto cb) {
@@ -343,6 +360,7 @@ int main() {
   for (int i = 0; i < 10; i++)
 #endif
   {
+    testCollection();
     testException();
     testDynamicCast();
     testGcFromThis();
