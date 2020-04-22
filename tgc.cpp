@@ -62,22 +62,22 @@ const PtrBase* ObjPtrEnumerator::getNext() {
 //////////////////////////////////////////////////////////////////////////
 
 PtrBase::PtrBase() : meta(0), isRoot(1) {
-  auto* c = Collector::get();
+  auto* c = Collector::inst ? Collector::inst : Collector::get();
   c->registerPtr(this);
 }
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
-  auto* c = Collector::get();
+  auto* c = Collector::inst ? Collector::inst : Collector::get();
   c->registerPtr(this);
   meta = c->globalFindOwnerMeta(obj);
 }
 
 PtrBase::~PtrBase() {
-  Collector::get()->unregisterPtr(this);
+  Collector::inst->unregisterPtr(this);
 }
 
 void PtrBase::onPtrChanged() {
-  Collector::get()->onPointerChanged(this);
+  Collector::inst->onPointerChanged(this);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -109,7 +109,7 @@ void ClassInfo::endNewMeta(ObjMeta* meta, bool failed) {
   }
 
   {
-    auto* c = Collector::get();
+    auto* c = Collector::inst;
     unique_lock lk{c->mutex, try_to_lock};
     c->creatingObjs.remove(meta);
     if (failed) {

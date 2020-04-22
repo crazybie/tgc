@@ -363,6 +363,7 @@ class Collector {
  private:
   typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
   friend class ClassInfo;
+  friend class PtrBase;
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
