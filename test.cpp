@@ -353,7 +353,7 @@ int main() {
 #ifdef PROFILE
   profiled("gc int", [] { gc<int> p(111); });
   profiled("raw int", [] { new int(111); });
-  gc_collect(profilingCounts);
+  gc_collect(profilingCounts * 2);
 #endif
 
 #ifdef PROFILE
