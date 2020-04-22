@@ -88,12 +88,34 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
                                    reinterpret_cast<void*>(objCnt));
 
-  // register meta then the constructor can find the owner later via
-  // gc_from(this).
-  Collector::get()->addMeta(meta);
+  try {
+    // register meta then the constructor can find the owner later via
+    // gc_from(this).
+    Collector::get()->addMeta(meta);
+  } catch (std::bad_alloc&) {
+    memHandler(this, MemRequest::Dealloc, meta);
+    throw;
+  }
 
   isCreatingObj++;
   return meta;
+}
+
+void ClassInfo::endNewMeta(ObjMeta* meta) {
+  isCreatingObj--;
+
+  if (!meta)
+    return;
+
+  {
+    unique_lock lk{mutex};
+    state = ClassInfo::State::Registered;
+  }
+  {
+    auto* c = Collector::get();
+    unique_lock lk{c->mutex, try_to_lock};
+    c->creatingObjs.remove(meta);
+  }
 }
 
 void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
@@ -112,19 +134,6 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 
   unique_lock lk{mutex};
   subPtrOffsets.push_back(offset);
-}
-
-void ClassInfo::endNewMeta(ObjMeta* meta) {
-  isCreatingObj--;
-  {
-    unique_lock lk{mutex};
-    state = ClassInfo::State::Registered;
-  }
-  {
-    auto* c = Collector::get();
-    unique_lock lk{c->mutex, try_to_lock};
-    c->creatingObjs.remove(meta);
-  }
 }
 
 //////////////////////////////////////////////////////////////////////////

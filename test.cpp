@@ -293,6 +293,34 @@ void testDynamicCast() {
   assert(sub == sub2);
 }
 
+void testException() {
+  struct Ctx {
+    int dctorCnt = 0, ctorCnt = 0;
+    int len = 3;
+  };
+
+  struct Test {
+    Ctx& c;
+    Test(Ctx& cc) : c(cc) {
+      c.ctorCnt++;
+      if (c.ctorCnt == c.len)
+        throw 1;
+    }
+    ~Test() { c.dctorCnt++; }
+  };
+
+  auto err = false;
+  Ctx c;
+  try {
+    auto i = gc_new_array<Test>(c.len, c);
+  } catch (int) {
+    err = true;
+  }
+  assert(err);
+  assert(c.dctorCnt == c.len - 1);
+  assert(details::ClassInfo::get<Test>()->isCreatingObj == 0);
+}
+
 const int profilingCounts = 10000 * 100;
 
 auto profiled = [](const char* tag, auto cb) {
@@ -315,6 +343,7 @@ int main() {
   for (int i = 0; i < 10; i++)
 #endif
   {
+    testException();
     testDynamicCast();
     testGcFromThis();
     testCircledContainer();

@@ -388,9 +388,20 @@ template <typename T, typename... Args>
 ObjMeta* gc_new_meta(size_t len, Args&&... args) {
   auto* cls = ClassInfo::get<T>();
   auto* meta = cls->newMeta(len);
+
+  size_t i = 0;
   auto* p = (T*)meta->objPtr();
-  for (size_t i = 0; i < len; i++, p++)
-    new (p) T(forward<Args>(args)...);
+  try {
+    for (; i < len; i++, p++)
+      new (p) T(forward<Args>(args)...);
+  } catch (...) {
+    for (auto j = i; j > 0; j--, p--) {
+      p->~T();
+    }
+    cls->endNewMeta(nullptr);
+    throw;
+  }
+
   cls->endNewMeta(meta);
   return meta;
 }
