@@ -46,7 +46,7 @@ struct rc {
   ~rc() { auto i = gc<rc>(this); }
 };
 
-void test() {
+void testPointerCast() {
   {
     gc<rc> prc = gc_new<rc>();
     {
@@ -71,9 +71,9 @@ struct circ {
   ~circ() { cout << "Destroying circ(" << name << ")." << endl; }
 
   gc<circ> ptr;
-
   string name;
 };
+
 void testCirc() {
   {
     auto p5 = gc_new<circ>("root");
@@ -115,32 +115,6 @@ void testEmpty() {
     gc<b1> emptry;
   }
 }
-
-void testInsert() {
-#ifdef PROFILE
-  std::vector<gc<b1>> objs;
-  objs.reserve(2000);
-  for (int k = 0; k < 2000; k++) {
-    gc<b1> p(gc_new<b1>("a"));
-    objs.push_back(p);
-  }
-  {
-    gc<b1> p = gc_new<b1>("a");
-    objs[rand() % objs.size()] = p;
-  }
-#endif
-}
-
-// Test global instances.
-struct g {
-  g() {}
-  ~g() {
-    // To verify that global objects are deleted set a breakpoint here.
-    // Note:  We do this because cout doesn't work properly here.
-    int i = 0;
-  }
-};
-// gc<g> global(gc_new<g>());
 
 struct ArrayTest {
   gc_vector<rc> a;
@@ -349,33 +323,45 @@ auto profiled = [](const char* tag, auto cb) {
   printf("[%10s] elapsed time: %fs\n", tag, elapsed_seconds.count());
 };
 
-int main() {
-#ifdef PROFILE
+void profileAlloc() {
+#ifndef _DEBUG
+  vector<int*> rawPtrs;
+  rawPtrs.reserve(profilingCounts);
   profiled("gc int", [] { gc<int> p(111); });
-  profiled("raw int", [] { new int(111); });
-  gc_collect(profilingCounts * 2);
+  profiled("raw int", [&] { rawPtrs.push_back(new int(111)); });
+  for (auto* i : rawPtrs)
+    delete i;
+  gc_collect(profilingCounts);
 #endif
+}
 
-#ifdef PROFILE
-  for (int i = 0; i < 10; i++)
-#endif
-  {
-    testCollection();
-    testException();
-    testDynamicCast();
-    testGcFromThis();
-    testCircledContainer();
-    testPrimaryImplicitCtor();
-    testSet();
-    testInsert();
-    testEmpty();
-    test();
-    testMoveCtor();
-    testCirc();
-    testArray();
-    testList();
-    testDeque();
-    testHashMap();
-    testLambda();
-  }
+int main() {
+  profileAlloc();
+  testCollection();
+  testException();
+  testDynamicCast();
+  testGcFromThis();
+  testCircledContainer();
+  testPrimaryImplicitCtor();
+  testSet();
+  testEmpty();
+  testPointerCast();
+  testMoveCtor();
+  testCirc();
+  testArray();
+  testList();
+  testDeque();
+  testHashMap();
+  testLambda();
+
+  // there are some objects leaking from the upper tests, just dump them
+  // out.
+  gc_dumpStats();
+  gc_collect();
+  // there should be no objects exists after the collecting.
+  gc_dumpStats();
+
+  // leaking test, you should not see leaks in the output of VS.
+  auto i = gc_new<int>(100);
+  return 0;
 }
