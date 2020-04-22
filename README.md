@@ -63,7 +63,10 @@
 - Memories garanteed to have no pointers in it can use shared_ptr or raw pointers to make recliaming faster.
 - Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enable the multi-threaded version.
 - Use gc_new_array to get a collectable continuous array for better performance.
-- You can dynamically specify the step count(the default 255) for one collecting phase by timing your event loop, to fit your performance requirement.
+- Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
+- For realtime applications:
+    - Static strategy: just call gc_collect with a suitable step count regularyly in each frame of the event loop.
+    - Dynamic strategy: you can specify a small step count(the default 255) for one collecting call and time it to see if have still time left to collect again, otherwise do collecting at the next time.
 
 ### Usage
 
