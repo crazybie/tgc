@@ -41,32 +41,35 @@
     - cann't predicate the number of objects destructed in complex scenarios when clear a shared_ptr, but not for gc pointers as you can control the collection steps to run.
 
 ### Internals
-- Use triple color, mark & sweep algorithgm.
+- This collector uses the triple color, mark & sweep algorithgm internally.
 - Pointers are constructed as roots by default, unless detected as children.
+- Every class has a global meta object keeping the necessary meta informations(e.g. class size and offsets of member pointers) used by gc, so programs using lambdas heavily may have some memory overhead. Besides, as the class meta objects are global and global objects are initialized in undefined order, so you should not use gc pointers as global variables. Don't worry, inside the system there is an assert checking this rule.
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than raw pointers(Boehm gc).
-    - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temperary pointer bringing in some meaningless overhead.
-    - Modifying a gc pointer will trigger a gc color adjustment which is not cheap as well.
-- Each allocation has a few extra space overhead (size of two pointers), which is used for memory tracking.
-- Marking & swapping should be much faster than Boehm gc, due to the deterministic pointer management.
-- Can not use gc pointers as global variables.
-- Every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
-- To make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
+    - Every gc pointer must register itself to the collector and unregister on destruction as well.
+    - Since c++ donot support ref-quanlified constructors, the gc_new returns a temporary gc pointer bringing in some meaningless overhead. Instead, using gc_new_meta can bypass the construction of the temporary making things a bit faster.
+    - Member pointers offsets of one class are calculated and recorded at the first time of creating the instance of that class.
+    - Modifying a gc pointer will trigger a gc color adjustment which may not be cheap as well.
+- Each allocation has a few extra space overhead (at most size of two pointers), which is used for memory tracking.
+- Marking & swapping should be much faster than Boehm gc, due to the deterministic pointer management, no scanning inside the memories at all, just iterating pointers registered in the gc.
+- To make objects in a tracking chain, you must use gc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
-- Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
-- Double free is safe.
+- You can manually call gc_delete to trigger the destrcutor of a object and let the gc claim the memory automatically. Besides, double free is also safe.
 - For the multi-threaded version, the collection function should be invoked to run in the main thread therefore the destructors can be triggered in the main thread as well.
 
 
 ### Performance Advices
-- Performance is not the first goal of this library. Results from tests, a simple allocation of interger is about ~10 slower than standard new, so benchmark your program if gc pointers are used in the performance critical parts(e.g. VM of another language).
-- Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
-- Memories garanteed to have no pointers in it can use shared_ptr or raw pointers to make recliaming faster.
-- Single-threaded version (by default) is faster than multi-threads version because no locks are required. Define TGC_MULTI_THREADED to enable the multi-threaded version.
-- Use gc_new_array to get a collectable continuous array for better performance.
+- Performance is not the first goal of this library. 
+    - Results from tests, a simple allocation of interger is about 8~10 slower than standard new(see test), so benchmark your program if gc pointers are heavily used in the performance critical parts(e.g. VM of another language).
+    - Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
+    - Use gc_new_array to get a collectable continuous array for better performance in some special cases (see internals section).
+    - Continuous efforts will be put to optimize the performance in the later time.
 - Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
 - For realtime applications:
     - Static strategy: just call gc_collect with a suitable step count regulaly in each frame of the event loop.
-    - Dynamic strategy: you can specify a small step count(the default 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
+    - Dynamic strategy: you can specify a small step count(default is 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
+- As memories are managed by gc, you can not release them immediately. If you want to get rid of the risk of OOM on some resource limited system, memories garanteed to have no pointers in it can be managed by shared_ptrs or raw pointers.
+- Single-threaded version(by default) should be much faster than multi-threaded version, because no locks are required at all. Please define TGC_MULTI_THREADED to enable the multi-threaded version.
+
 
 ### Usage
 
