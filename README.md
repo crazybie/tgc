@@ -49,7 +49,7 @@
     - Modifying a gc pointer will trigger a gc color adjustment which may not be cheap as well.
 - Each allocation has a few extra space overhead (at most size of two pointers), which is used for memory tracking.
 - Marking & swapping should be much faster than Boehm gc, due to the deterministic pointer management, no scanning inside the memories at all, just walking the object grpah by iterating pointers registered in the gc.
-- Every class has a global info object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead. Besides, you can not use gc pointers as global variables, as the class info objects are global objects, all global objects are constructed in undefined order. Don't worry, inside the system there is an assert checking this rule.
+- Every class has a global meta object keeping the necessary meta informations(e.g. object size and pointer offsets) used by gc, so programs using lambdas heavily may have noticeable memory overhead. Besides, you can not use gc pointers as global variables, as the class info objects are global objects, all global objects are constructed in undefined order. Don't worry, inside the system there is an assert checking this rule.
 - To make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
 - Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
