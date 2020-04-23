@@ -233,15 +233,19 @@ class PtrBase {
   friend class Collector;
   friend class ClassInfo;
 
- protected:
-  ObjMeta* meta;
-  mutable unsigned int isRoot : 1;
-  unsigned int index : 31;
+ public:
+  ObjMeta* getMeta() { return meta; }
 
+ protected:
   PtrBase();
   PtrBase(void* obj);
   ~PtrBase();
   void onPtrChanged();
+
+ protected:
+  ObjMeta* meta;
+  mutable unsigned int isRoot : 1;
+  unsigned int index : 31;
 };
 
 template <typename T>
@@ -291,7 +295,10 @@ class GcPtr : public PtrBase {
   explicit operator bool() const { return p && meta; }
   bool operator==(const GcPtr& r) const { return meta == r.meta; }
   bool operator!=(const GcPtr& r) const { return meta != r.meta; }
-  void operator=(T*) = delete;
+  GcPtr& operator=(T* ptr) {
+    reset(ptr, Collector::inst->globalFindOwnerMeta(ptr));
+    return *this;
+  }
   GcPtr& operator=(decltype(nullptr)) {
     meta = 0;
     p = 0;
@@ -306,8 +313,6 @@ class GcPtr : public PtrBase {
     meta = n;
     onPtrChanged();
   }
-
-  ObjMeta* getMeta() { return meta; }
 
  protected:
   T* p;
@@ -495,11 +500,10 @@ class gc_function<R(A...)> {
 //////////////////////////////////////////////////////////////////////////
 
 template <typename C>
-class ContainerPtrEnumerator : public IPtrEnumerator {
- public:
+struct ContainerPtrEnumerator : IPtrEnumerator {
   C* o;
   typename C::iterator it;
-  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()) { it = o->begin(); }
+  ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()), it(o->begin()) {}
   bool hasNext() override { return it != o->end(); }
 };
 
@@ -516,16 +520,15 @@ class gc_vector : public gc<vector<gc<T>>> {
 };
 
 template <typename T>
-class PtrEnumerator<vector<gc<T>>>
-    : public ContainerPtrEnumerator<vector<gc<T>>> {
- public:
+struct PtrEnumerator<vector<gc<T>>> : ContainerPtrEnumerator<vector<gc<T>>> {
   using ContainerPtrEnumerator<vector<gc<T>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
 gc_vector<T> gc_new_vector(Args&&... args) {
-  return gc_new<vector<gc<T>>>(forward<Args>(args)...);
+  return gc_new_meta<vector<gc<T>>>(1, forward<Args>(args)...);
 }
 
 template <typename T>
@@ -547,16 +550,15 @@ class gc_deque : public gc<deque<gc<T>>> {
 };
 
 template <typename T>
-class PtrEnumerator<deque<gc<T>>>
-    : public ContainerPtrEnumerator<deque<gc<T>>> {
- public:
+struct PtrEnumerator<deque<gc<T>>> : ContainerPtrEnumerator<deque<gc<T>>> {
   using ContainerPtrEnumerator<deque<gc<T>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
 gc_deque<T> gc_new_deque(Args&&... args) {
-  return gc_new<deque<gc<T>>>(forward<Args>(args)...);
+  return gc_new_meta<deque<gc<T>>>(1, forward<Args>(args)...);
 }
 
 template <typename T>
@@ -574,15 +576,15 @@ template <typename T>
 using gc_list = gc<list<gc<T>>>;
 
 template <typename T>
-class PtrEnumerator<list<gc<T>>> : public ContainerPtrEnumerator<list<gc<T>>> {
- public:
+struct PtrEnumerator<list<gc<T>>> : ContainerPtrEnumerator<list<gc<T>>> {
   using ContainerPtrEnumerator<list<gc<T>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename T, typename... Args>
 gc_list<T> gc_new_list(Args&&... args) {
-  return gc_new<list<gc<T>>>(forward<Args>(args)...);
+  return gc_new_meta<list<gc<T>>>(1, forward<Args>(args)...);
 }
 
 template <typename T>
@@ -605,10 +607,9 @@ class gc_map : public gc<map<K, gc<V>>> {
 };
 
 template <typename K, typename V>
-class PtrEnumerator<map<K, gc<V>>>
-    : public ContainerPtrEnumerator<map<K, gc<V>>> {
- public:
+struct PtrEnumerator<map<K, gc<V>>> : ContainerPtrEnumerator<map<K, gc<V>>> {
   using ContainerPtrEnumerator<map<K, gc<V>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override {
     auto* ret = &this->it->second;
     ++this->it;
@@ -618,7 +619,7 @@ class PtrEnumerator<map<K, gc<V>>>
 
 template <typename K, typename V, typename... Args>
 gc_map<K, V> gc_new_map(Args&&... args) {
-  return gc_new<map<K, gc<V>>>(forward<Args>(args)...);
+  return gc_new_meta<map<K, gc<V>>>(1, forward<Args>(args)...);
 }
 
 template <typename K, typename V>
@@ -641,10 +642,10 @@ class gc_unordered_map : public gc<unordered_map<K, gc<V>>> {
 };
 
 template <typename K, typename V>
-class PtrEnumerator<unordered_map<K, gc<V>>>
-    : public ContainerPtrEnumerator<unordered_map<K, gc<V>>> {
- public:
+struct PtrEnumerator<unordered_map<K, gc<V>>>
+    : ContainerPtrEnumerator<unordered_map<K, gc<V>>> {
   using ContainerPtrEnumerator<unordered_map<K, gc<V>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override {
     auto* ret = &this->it->second;
     ++this->it;
@@ -654,7 +655,7 @@ class PtrEnumerator<unordered_map<K, gc<V>>>
 
 template <typename K, typename V, typename... Args>
 gc_unordered_map<K, V> gc_new_unordered_map(Args&&... args) {
-  return gc_new<unordered_map<K, gc<V>>>(forward<Args>(args)...);
+  return gc_new_meta<unordered_map<K, gc<V>>>(1, forward<Args>(args)...);
 }
 template <typename K, typename V>
 void gc_delete(gc_unordered_map<K, V>& p) {
@@ -671,15 +672,15 @@ template <typename V>
 using gc_set = gc<set<gc<V>>>;
 
 template <typename V>
-class PtrEnumerator<set<gc<V>>> : public ContainerPtrEnumerator<set<gc<V>>> {
- public:
+struct PtrEnumerator<set<gc<V>>> : ContainerPtrEnumerator<set<gc<V>>> {
   using ContainerPtrEnumerator<set<gc<V>>>::ContainerPtrEnumerator;
+
   const PtrBase* getNext() override { return &*this->it++; }
 };
 
 template <typename V, typename... Args>
 gc_set<V> gc_new_set(Args&&... args) {
-  return gc_new<set<gc<V>>>(forward<Args>(args)...);
+  return gc_new_meta<set<gc<V>>>(1, forward<Args>(args)...);
 }
 
 template <typename T>
@@ -705,6 +706,9 @@ using details::gc_new;
 using details::gc_new_array;
 using details::gc_static_pointer_cast;
 
+using details::gc_new_vector;
+using details::gc_vector;
+
 using details::gc_deque;
 using details::gc_new_deque;
 
@@ -719,9 +723,6 @@ using details::gc_set;
 
 using details::gc_new_unordered_map;
 using details::gc_unordered_map;
-
-using details::gc_new_vector;
-using details::gc_vector;
 
 TGC_DECL_AUTO_BOX(char, gc_char);
 TGC_DECL_AUTO_BOX(unsigned char, gc_uchar);

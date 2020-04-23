@@ -85,13 +85,15 @@ void PtrBase::onPtrChanged() {
 ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   assert(memHandler && "should not be called in global scope (before main)");
 
+  auto* c = Collector::inst ? Collector::inst : Collector::get();
+
   auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
                                    reinterpret_cast<void*>(objCnt));
 
   try {
     // register meta so the constructor of pointers can find the owner later via
     // gc_from(this).
-    Collector::get()->addMeta(meta);
+    c->addMeta(meta);
   } catch (std::bad_alloc&) {
     memHandler(this, MemRequest::Dealloc, meta);
     throw;
