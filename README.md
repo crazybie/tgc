@@ -62,6 +62,7 @@
     - Results from tests, a simple allocation of interger is about 8~10 slower than standard new(see test), so benchmark your program if gc pointers are heavily used in the performance critical parts(e.g. VM of another language).
     - Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
     - Use gc_new_array to get a collectable continuous array for better performance in some special cases (see internals section).
+    - Continuous efforts will be put to optimize the performance in the later time.
 - Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
 - For realtime applications:
     - Static strategy: just call gc_collect with a suitable step count regulaly in each frame of the event loop.
