@@ -44,12 +44,11 @@
 - Use triple color, mark & sweep algorithgm.
 - Pointers are constructed as roots by default, unless detected as children.
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than raw pointers(Boehm gc).
-    - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temperary pointer bringing in some meaningless overhead.
+    - Since c++ donot support ref-quanlified constructors, create object to initialize gc pointer need to construct temporary pointer bringing in some meaningless overhead. Use gc_new_meta to initialize gc pointers can bypass construction of this temporary pointer which make gc object initialization a little faster.
     - Modifying a gc pointer will trigger a gc color adjustment which is not cheap as well.
 - Each allocation has a few extra space overhead (size of two pointers), which is used for memory tracking.
 - Marking & swapping should be much faster than Boehm gc, due to the deterministic pointer management.
-- Can not use gc pointers as global variables.
-- Every class has a global object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead.
+- Every class has a global info object keeping the necessary meta informations used by gc, so programs using lambdas heavily may have noticeable memory overhead. Besides, you can not use gc pointers as global variables, as the class info objects are global objects, all global objects are constructed in undefined order. Don't worry, inside the system there is an assert checking this rule.
 - To make objects in a tracking chain, use tgc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
 - Can manually call gc_delete to trigger the destrcution of the object, and leave the gc to collect the memory automatically.
