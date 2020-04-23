@@ -7,6 +7,10 @@
 namespace tgc {
 namespace details {
 
+#ifndef TGC_MULTI_THREADED
+shared_mutex ClassInfo::mutex;
+#endif
+
 atomic<int> ClassInfo::isCreatingObj = 0;
 ClassInfo ClassInfo::Empty;
 char* ObjMeta::dummyObjPtr = 0;
@@ -46,15 +50,16 @@ bool ObjMeta::containsPtr(char* p) {
 //////////////////////////////////////////////////////////////////////////
 
 bool ObjPtrEnumerator::hasNext() {
-  return arrayElemIdx < arrayLength &&
-         subPtrIdx < meta->clsInfo->subPtrOffsets.size();
+  if (auto* subPtrs = meta->clsInfo->subPtrOffsets)
+    return arrayElemIdx < arrayLength && subPtrIdx < subPtrs->size();
+  return false;
 }
 
 const PtrBase* ObjPtrEnumerator::getNext() {
   auto* clsInfo = meta->clsInfo;
   auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
-  auto* subPtr = obj + clsInfo->subPtrOffsets[subPtrIdx];
-  if (subPtrIdx++ >= clsInfo->subPtrOffsets.size())
+  auto* subPtr = obj + (*clsInfo->subPtrOffsets)[subPtrIdx];
+  if (subPtrIdx++ >= clsInfo->subPtrOffsets->size())
     arrayElemIdx++;
   return (PtrBase*)subPtr;
 }
@@ -122,21 +127,22 @@ void ClassInfo::endNewMeta(ObjMeta* meta, bool failed) {
 }
 
 void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
-  short offset = 0;
+  short offset = (decltype(offset))((char*)p - owner->objPtr());
+
   {
     shared_lock lk{mutex};
     if (state == ClassInfo::State::Registered)
       return;
 
-    offset = (decltype(offset))((char*)p - owner->objPtr());
-
     // constructor recursed.
-    if (subPtrOffsets.size() > 0 && offset <= subPtrOffsets.back())
+    if (subPtrOffsets && offset <= subPtrOffsets->back())
       return;
   }
 
   unique_lock lk{mutex};
-  subPtrOffsets.push_back(offset);
+  if (!subPtrOffsets)
+    subPtrOffsets = new vector<short>();
+  subPtrOffsets->push_back(offset);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -31,6 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //#define TGC_MULTI_THREADED
 
 #include <cassert>
+#include <memory>
 #include <set>
 #include <typeinfo>
 #include <vector>
@@ -46,12 +47,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <map>
 #include <string>
 #include <unordered_map>
-
-#ifdef TGC_DEBUG
-#define TGC_DEBUG_CODE(...) __VA_ARGS__
-#else
-#define TGC_DEBUG_CODE(...)
-#endif
 
 namespace tgc {
 namespace details {
@@ -93,7 +88,7 @@ class ObjMeta {
 
   ClassInfo* clsInfo;
   MarkColor markState : 2;
-  unsigned int arrayLength : sizeof(unsigned int) * 8 - 2;
+  size_t arrayLength : sizeof(size_t) * 8 - 2;
 
   static char* dummyObjPtr;
 
@@ -158,25 +153,28 @@ struct PtrEnumerator : ObjPtrEnumerator {
 
 class ClassInfo {
  public:
-  enum class State : char { Unregistered, Registered };
+  enum class State : unsigned char { Unregistered, Registered };
   enum class MemRequest { Alloc, Dctor, Dealloc, NewPtrEnumerator };
   typedef void* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
 
-  TGC_DEBUG_CODE(const char* name);
-  MemHandler memHandler;
-  vector<short> subPtrOffsets;
-  State state : 2;
-  unsigned int size : sizeof(unsigned int) * 8 - 2;
+  MemHandler memHandler = nullptr;
+  vector<short>* subPtrOffsets = nullptr;
+  State state : 1;
+  unsigned short size : sizeof(unsigned short) * 8 - 1;
+
+#ifdef TGC_MULTI_THREADED
   shared_mutex mutex;
+#else
+  static shared_mutex mutex;
+#endif
 
   static atomic<int> isCreatingObj;
   static ClassInfo Empty;
 
-  ClassInfo() : memHandler(nullptr), size(0) {}
-  ClassInfo(TGC_DEBUG_CODE(const char* name_, ) MemHandler h, int sz)
-      : TGC_DEBUG_CODE(name(name_), ) memHandler(h),
-        size(sz),
-        state(State::Unregistered) {}
+  ClassInfo() : size(0) {}
+  ClassInfo(MemHandler h, int sz)
+      : memHandler(h), size(sz), state(State::Unregistered) {}
+  ~ClassInfo() { delete subPtrOffsets; }
 
   ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
@@ -224,8 +222,12 @@ class ClassInfo {
 };
 
 template <typename T>
-ClassInfo ClassInfo::Holder<T>::inst{
-    TGC_DEBUG_CODE(typeid(T).name(), ) MemHandler, sizeof(T)};
+ClassInfo ClassInfo::Holder<T>::inst{MemHandler, sizeof(T)};
+
+#ifndef TGC_MULTI_THREADED
+static_assert(sizeof(ClassInfo) <= sizeof(void*) * 3,
+              "too large for lambda heavy programs");
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 
