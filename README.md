@@ -66,7 +66,7 @@
 - Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
 - For realtime applications:
     - Static strategy: just call gc_collect with a suitable step count regulaly in each frame of the event loop.
-    - Dynamic strategy: you can specify a small step count(the default 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
+    - Dynamic strategy: you can specify a small step count(default is 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
 - As memories are managed by gc, you can not release them immediately. If you want to get rid of the risk of OOM on some resource limited system, memories garanteed to have no pointers in it can be managed by shared_ptrs or raw pointers.
 - Single-threaded version(by default) should be much faster than multi-threaded version, because no locks are required at all. Please define TGC_MULTI_THREADED to enable the multi-threaded version.
 
