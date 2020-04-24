@@ -30,7 +30,7 @@
     - Provide hooks to redirect memory allocation.    
     - It can be extended to use your custom containers.    
 - Precise.
-    - Ensure no memory leaks as long as objects are correctly tracked.
+    - Ensure no memory leaks as long as objects are correctly traced.
 
 ### Comparison
 -  Pros over shared_ptr:
@@ -47,13 +47,13 @@
 ### Internals
 - This collector uses the triple color, mark & sweep algorithm internally.    
 - Pointers are constructed as roots by default unless detected as children of other object.
-- A GC pointer has:
+- A GC pointer is with the size of 3-pointers:
     - one flag determin whether it's root or not.
     - an index for fast unregistering from collector.
-    - one raw pointer to the object and one pointer to the correspoinding meta-object to support:
+    - one raw pointer to the object and another one raw pointer to the correspoinding meta-object, this is to support:
         - multiple inheritance.
         - pointer to fields of other object, aka internal pointer.
-- Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too. Don't worry, inside the system, there is an assert checking this rule.
+- Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too (there is an assert checking it).
 - Construct & copy & modify GC pointers are slower than shared_ptr, much slower than raw pointers(Boehm GC).
     - Every GC pointer must register itself to the collector and unregister on destruction as well.
     - Since C++ does not support ref-qualified constructors, the gc_new returns a temporary GC pointer bringing in some meaningless overhead. Instead, using gc_new_meta can bypass the construction of the temporary making things a bit faster.
