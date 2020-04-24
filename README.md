@@ -47,7 +47,7 @@
 ### Internals
 - This collector uses the triple color, mark & sweep algorithm internally.    
 - Pointers are constructed as roots by default unless detected as children of other object.
-- A GC pointer has:
+- A GC pointer is with the size of 3-pointers:
     - one flag determin whether it's root or not.
     - an index for fast unregistering from collector.
     - one raw pointer to the object and one pointer to the correspoinding meta-object to support:
