@@ -39,9 +39,13 @@
     - gc_from(this) works in the constructor where shared_ptr is not.
     - construct gc pointer from raw pointer is safe to call any times where shared_ptr is not because it will reset the ref counter    
     - cann't predicate the number of objects destructed in complex scenarios when clear a shared_ptr, but not for gc pointers as you can control the collection steps to run.
+    
+- Pros over Oilpan GC:
+    - Easier to use, only one kind of gc pointer to be used.
+    - More general to be usable widely
 
 ### Internals
-- This collector uses the triple color, mark & sweep algorithgm internally.
+- This collector uses the triple color, mark & sweep algorithgm internally.    
 - Pointers are constructed as roots by default, unless detected as children.
 - Every class has a global meta object keeping the necessary meta informations(e.g. class size and offsets of member pointers) used by gc, so programs using lambdas heavily may have some memory overhead. Besides, as initialization order of global objects are not well defined, you should not use gc pointers as global variables too. Don't worry, inside the system there is an assert checking this rule.
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than raw pointers(Boehm gc).
@@ -63,10 +67,10 @@
     - Use reference to gc pointers as much as possible. (e.g. function parameters, see internals section)
     - Use gc_new_array to get a collectable continuous array for better performance in some special cases (see internals section).
     - Continuous efforts will be put to optimize the performance in the later time.
-- Tranditional dynamic languages will create huge number of heap objects which will give large pressure to the gc, but this won't happen in C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc is efficient enough. 
+    - Languages with gc built-in prefer to create huge number of heap objects which will give large pressure to the gc, some languages even use pointer escaping analyzing algorithm to increase the recycling efficiency, but it's not a serious problem to C++ as it has RAII and do not use heap objects everywhere. So the throughput of this triple-color gc should be efficient enough. 
 - For real-time applications:
     - Static strategy: just call gc_collect with a suitable step count regulaly in each frame of the event loop.
-    - Dynamic strategy: you can specify a small step count(default is 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.
+    - Dynamic strategy: you can specify a small step count(default is 255) for one collecting call and time it to see if still has  time left to collect again, otherwise do collecting at the next time.    
 - As memories are managed by gc, you can not release them immediately. If you want to get rid of the risk of OOM on some resource limited system, memories garanteed to have no pointers in it can be managed by shared_ptrs or raw pointers.
 - Single-threaded version(by default) should be much faster than multi-threaded version, because no locks are required at all. Please define TGC_MULTI_THREADED to enable the multi-threaded version.
 
