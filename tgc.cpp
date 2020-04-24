@@ -316,7 +316,7 @@ void Collector::collect(int stepCnt) {
         if (!meta)
           continue;
         if (meta->color == ObjMeta::Color::White) {
-          meta->color == ObjMeta::Color::Gray;
+          meta->color = ObjMeta::Color::Gray;
           grayObjs.push_back(meta);
         }
       }

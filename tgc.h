@@ -27,7 +27,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//#define TGC_DEBUG
 //#define TGC_MULTI_THREADED
 
 #include <cassert>
