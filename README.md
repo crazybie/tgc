@@ -43,7 +43,7 @@
 ### Internals
 - This collector uses the triple color, mark & sweep algorithgm internally.
 - Pointers are constructed as roots by default, unless detected as children.
-- Every class has a global meta object keeping the necessary meta informations(e.g. class size and offsets of member pointers) used by gc, so programs using lambdas heavily may have some memory overhead. Besides, as the global objects are initialized in undefined order, you should not use gc pointers as global variables too. Don't worry, inside the system there is an assert checking this rule.
+- Every class has a global meta object keeping the necessary meta informations(e.g. class size and offsets of member pointers) used by gc, so programs using lambdas heavily may have some memory overhead. Besides, as initialization order of global objects are not well defined, you should not use gc pointers as global variables too. Don't worry, inside the system there is an assert checking this rule.
 - Construct & copy & modify gc pointers are slower than shared_ptr, much slower than raw pointers(Boehm gc).
     - Every gc pointer must register itself to the collector and unregister on destruction as well.
     - Since c++ donot support ref-quanlified constructors, the gc_new returns a temporary gc pointer bringing in some meaningless overhead. Instead, using gc_new_meta can bypass the construction of the temporary making things a bit faster.
