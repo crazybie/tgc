@@ -66,7 +66,7 @@ const PtrBase* ObjPtrEnumerator::getNext() {
 
 //////////////////////////////////////////////////////////////////////////
 
-PtrBase::PtrBase() : meta(0), isRoot(1) {
+PtrBase::PtrBase() : isRoot(1) {
   auto* c = Collector::inst ? Collector::inst : Collector::get();
   c->registerPtr(this);
 }

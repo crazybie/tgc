@@ -89,9 +89,9 @@ class ObjMeta {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
-  ClassMeta* klass;
+  ClassMeta* klass = nullptr;
   atomic<Color> color = Color::White;
-  LengthType arrayLength;
+  LengthType arrayLength = 0;
 
   static char* dummyObjPtr;
 
@@ -129,7 +129,7 @@ class IPtrEnumerator {
 
 class ObjPtrEnumerator : public IPtrEnumerator {
   size_t subPtrIdx = 0, arrayElemIdx = 0;
-  ObjMeta* meta;
+  ObjMeta* meta = nullptr;
 
  public:
   ObjPtrEnumerator(ObjMeta* m) : meta(m) {}
@@ -154,8 +154,8 @@ class ClassMeta {
 
   MemHandler memHandler = nullptr;
   vector<OffsetType>* subPtrOffsets = nullptr;
-  State state;
-  SizeType size;
+  State state = State::Unregistered;
+  SizeType size = 0;
 
 #ifdef TGC_MULTI_THREADED
   shared_mutex mutex;
@@ -166,9 +166,8 @@ class ClassMeta {
   static atomic<int> isCreatingObj;
   static ClassMeta dummy;
 
-  ClassMeta() : size(0) {}
-  ClassMeta(MemHandler h, SizeType sz)
-      : memHandler(h), size(sz), state(State::Unregistered) {}
+  ClassMeta() {}
+  ClassMeta(MemHandler h, SizeType sz) : memHandler(h), size(sz) {}
   ~ClassMeta() { delete subPtrOffsets; }
 
   ObjMeta* newMeta(size_t objCnt);
@@ -240,7 +239,7 @@ class PtrBase {
   void onPtrChanged();
 
  protected:
-  ObjMeta* meta;
+  ObjMeta* meta = nullptr;
   mutable unsigned int isRoot : 1;
   unsigned int index : 31;
 };
@@ -257,7 +256,7 @@ class GcPtr : public PtrBase {
  public:
   // Constructors
 
-  GcPtr() : p(nullptr) {}
+  GcPtr() {}
   GcPtr(ObjMeta* meta) { reset((T*)meta->objPtr(), meta); }
   explicit GcPtr(T* obj) : PtrBase(obj), p(obj) {}
   template <typename U>
@@ -309,7 +308,7 @@ class GcPtr : public PtrBase {
   }
 
  protected:
-  T* p;
+  T* p = nullptr;
 };
 
 static_assert(sizeof(GcPtr<int>) <= sizeof(void*) * 3);
