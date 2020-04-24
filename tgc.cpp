@@ -16,7 +16,7 @@ char* ObjMeta::dummyObjPtr = nullptr;
 Collector* Collector::inst = nullptr;
 
 static const char* StateStr[(int)Collector::State::MaxCnt] = {
-    "RootMarking", "ChildMarking", "Sweeping"};
+    "RootMarking", "LeafMarking", "Sweeping"};
 
 //////////////////////////////////////////////////////////////////////////
 
