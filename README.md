@@ -53,7 +53,7 @@
     - one raw pointer to the object and another one raw pointer to the correspoinding meta-object, this is to support:
         - multiple inheritance.
         - pointer to fields of other object, aka internal pointer.
-- Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too (There is an assert checking it).
+- Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too (there is an assert checking it).
 - Construct & copy & modify GC pointers are slower than shared_ptr, much slower than raw pointers(Boehm GC).
     - Every GC pointer must register itself to the collector and unregister on destruction as well.
     - Since C++ does not support ref-qualified constructors, the gc_new returns a temporary GC pointer bringing in some meaningless overhead. Instead, using gc_new_meta can bypass the construction of the temporary making things a bit faster.
