@@ -14,7 +14,7 @@
     - Use like shared_ptr.
     - Do not need to replace the global new operator.
     - Do not need to inherit from a common base.    
-    - It can even work with shared_ptr.   
+    - Can even work with shared_ptr.   
 - Incremental marking and sweeping
     - Won't stop the world.
     - Can specify the number of steps used for each collecting.
@@ -42,11 +42,11 @@
     
 - Pros over Oilpan GC:
     - Easier to use, only one kind of GC pointer to be used.
-    - More general and usable for wider scenarios.
+    - More general, suitable for wider scenarios.
 
 ### Internals
 - This collector uses the triple color, mark & sweep algorithm internally.    
-- Pointers are constructed as roots by default unless detected as children.
+- Pointers are constructed as roots by default unless detected as children of other object.
 - Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too. Don't worry, inside the system, there is an assert checking this rule.
 - Construct & copy & modify GC pointers are slower than shared_ptr, much slower than raw pointers(Boehm GC).
     - Every GC pointer must register itself to the collector and unregister on destruction as well.
