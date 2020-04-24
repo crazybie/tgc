@@ -51,7 +51,7 @@
     - Modifying a gc pointer will trigger a gc color adjustment which may not be cheap as well.
 - Each allocation has a few extra space overhead (at most size of two pointers), which is used for memory tracking.
 - Marking & swapping should be much faster than Boehm gc, due to the deterministic pointer management, no scanning inside the memories at all, just iterating pointers registered in the gc.
-- To make objects in a tracking chain, you must use gc wrappers of STL containers instead, otherwise memory leaks may occur.
+- To make objects in proper tracing chain, you must use gc wrappers of STL containers instead, otherwise memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as standard vector, this is necessary for the gc. Actually all wrapped containers of STL stores gc pointers as elements.
 - You can manually call gc_delete to trigger the destrcutor of a object and let the gc claim the memory automatically. Besides, double free is also safe.
 - For the multi-threaded version, the collection function should be invoked to run in the main thread therefore the destructors can be triggered in the main thread as well.
