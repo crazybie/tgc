@@ -358,7 +358,7 @@ class Collector {
   void collect(int stepCnt);
   void dumpStats();
 
-  enum class State { RootMarking, ChildMarking, Sweeping, MaxCnt };
+  enum class State { RootMarking, LeafMarking, Sweeping, MaxCnt };
 
  private:
   Collector();

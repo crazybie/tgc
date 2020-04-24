@@ -331,7 +331,7 @@ void profileAlloc() {
   profiled("raw int", [&] { rawPtrs.push_back(new int(111)); });
   for (auto* i : rawPtrs)
     delete i;
-  gc_collect(profilingCounts);
+  gc_collect(profilingCounts * 2);
 #endif
 }
 

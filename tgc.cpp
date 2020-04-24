@@ -128,9 +128,9 @@ void ClassMeta::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 
   {
     shared_lock lk{mutex};
+
     if (state == ClassMeta::State::Registered)
       return;
-
     // constructor recursed.
     if (subPtrOffsets && offset <= subPtrOffsets->back())
       return;
@@ -200,11 +200,18 @@ void Collector::unregisterPtr(PtrBase* p) {
     } else {
       swap(pointers[p->index], pointers.back());
       pointer = pointers[p->index];
-      pointer->index = p->index;
       pointers.pop_back();
+      pointer->index = p->index;
     }
   }
-  onPointerChanged(p);
+  if (!pointer->meta)
+    return;
+  shared_lock lk{mutex, try_to_lock};
+  if (state == State::RootMarking) {
+    if (p->index < nextRootMarking) {
+      tryMarkRoot(pointer);
+    }
+  }
 }
 
 void Collector::tryMarkRoot(PtrBase* p) {
@@ -225,7 +232,10 @@ void Collector::onPointerChanged(PtrBase* p) {
   shared_lock lk{mutex, try_to_lock};
   switch (state) {
     case State::RootMarking:
-    case State::ChildMarking:
+      if (p->index < nextRootMarking)
+        tryMarkRoot(p);
+      break;
+    case State::LeafMarking:
       tryMarkRoot(p);
       break;
     case State::Sweeping:
@@ -285,14 +295,14 @@ void Collector::collect(int stepCnt) {
       tryMarkRoot(p);
     }
     if (nextRootMarking >= pointers.size()) {
-      state = State::ChildMarking;
+      state = State::LeafMarking;
       nextRootMarking = 0;
       goto _ChildMarking;
     }
     break;
 
   _ChildMarking:
-  case State::ChildMarking:
+  case State::LeafMarking:
     while (grayObjs.size() && stepCnt-- > 0) {
       ObjMeta* o = grayObjs.back();
       grayObjs.pop_back();
@@ -306,6 +316,7 @@ void Collector::collect(int stepCnt) {
         if (!meta)
           continue;
         if (meta->color == ObjMeta::Color::White) {
+          meta->color == ObjMeta::Color::Gray;
           grayObjs.push_back(meta);
         }
       }
