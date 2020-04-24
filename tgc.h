@@ -295,8 +295,8 @@ class GcPtr : public PtrBase {
   T* operator->() const { return p; }
   T& operator*() const { return *p; }
   explicit operator bool() const { return p && meta; }
-  bool operator==(const GcPtr& r) const { return meta == r.meta; }
-  bool operator!=(const GcPtr& r) const { return meta != r.meta; }
+  bool operator==(const GcPtr& r) const { return p == r.p; }
+  bool operator!=(const GcPtr& r) const { return p != r.p; }
   GcPtr& operator=(T* ptr) = delete;
   GcPtr& operator=(nullptr_t) {
     meta = 0;
@@ -477,6 +477,8 @@ class gc_function<R(A...)> {
   }
 
   explicit operator bool() const { return (bool)callable; }
+  bool operator==(const gc_function& r) const { return callable == r.callable; }
+  bool operator!=(const gc_function& r) const { return callable != r.callable; }
 
  private:
   struct Callable {
