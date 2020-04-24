@@ -51,7 +51,7 @@ bool ObjMeta::containsPtr(char* p) {
 
 bool ObjPtrEnumerator::hasNext() {
   if (auto* subPtrs = meta->klass->subPtrOffsets)
-    return arrayElemIdx < arrayLength && subPtrIdx < subPtrs->size();
+    return arrayElemIdx < meta->arrayLength && subPtrIdx < subPtrs->size();
   return false;
 }
 

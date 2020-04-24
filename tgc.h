@@ -128,16 +128,11 @@ class IPtrEnumerator {
 };
 
 class ObjPtrEnumerator : public IPtrEnumerator {
-  size_t subPtrIdx, arrayElemIdx, arrayLength;
+  size_t subPtrIdx = 0, arrayElemIdx = 0;
   ObjMeta* meta;
 
  public:
-  ObjPtrEnumerator(ObjMeta* meta_, int len = 0)
-      : meta(meta_),
-        subPtrIdx(0),
-        arrayElemIdx(0),
-        arrayLength(len ? len : meta_->arrayLength) {}
-
+  ObjPtrEnumerator(ObjMeta* m) : meta(m) {}
   bool hasNext() override;
   const PtrBase* getNext() override;
 };
