@@ -47,6 +47,12 @@
 ### Internals
 - This collector uses the triple color, mark & sweep algorithm internally.    
 - Pointers are constructed as roots by default unless detected as children of other object.
+- A GC pointer has:
+    - one flag determin whether it's root
+    - an index for fast unregistering from gc
+    - one raw pointer and the correspoinding meta:
+        - support multiple inheritance.
+        - pointer to fields of other object, aka internal pointer.
 - Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too. Don't worry, inside the system, there is an assert checking this rule.
 - Construct & copy & modify GC pointers are slower than shared_ptr, much slower than raw pointers(Boehm GC).
     - Every GC pointer must register itself to the collector and unregister on destruction as well.
