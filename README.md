@@ -30,7 +30,7 @@
     - Provide hooks to redirect memory allocation.    
     - It can be extended to use your custom containers.    
 - Precise.
-    - Ensure no memory leaks as long as objects are correctly tracked.
+    - Ensure no memory leaks as long as objects are correctly traced.
 
 ### Comparison
 -  Pros over shared_ptr:
