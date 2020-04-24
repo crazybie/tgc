@@ -41,7 +41,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 // for STL wrappers
-
 #include <deque>
 #include <list>
 #include <map>
@@ -68,15 +67,16 @@ template <typename T>
 struct atomic {
   T value;
   atomic(T v) : value{v} {}
-  void operator++(T) { value++; }
-  void operator--(T) { value--; }
-  operator const T&() { return value; }
+  void operator++(int) { value++; }
+  void operator--(int) { value--; }
+  operator const T&() const { return value; }
+  bool operator==(const T& r) const { return value == r; }
 };
 
 #endif
 
 class ObjMeta;
-class ClassInfo;
+class ClassMeta;
 class PtrBase;
 class IPtrEnumerator;
 
@@ -84,21 +84,20 @@ class IPtrEnumerator;
 
 class ObjMeta {
  public:
-  enum class MarkColor { Unmarked, Gray, Alive };
-
-  ClassInfo* clsInfo;
-  MarkColor markState : 2;
-  size_t arrayLength : sizeof(size_t) * 8 - 2;
-
-  static char* dummyObjPtr;
-
+  enum class Color : unsigned char { White, Gray, Black };
+  using LengthType = unsigned short;
   struct Less {
     bool operator()(ObjMeta* x, ObjMeta* y) const { return *x < *y; }
   };
 
-  ObjMeta(ClassInfo* c, char* o, size_t cnt)
-      : clsInfo(c), markState(MarkColor::Unmarked), arrayLength((int)cnt) {}
+  ClassMeta* klass;
+  atomic<Color> color = Color::White;
+  LengthType arrayLength;
 
+  static char* dummyObjPtr;
+
+  ObjMeta(ClassMeta* c, char* o, size_t n)
+      : klass(c), arrayLength((LengthType)n) {}
   ~ObjMeta() {
     if (arrayLength)
       destroy();
@@ -123,7 +122,7 @@ class IPtrEnumerator {
 
   void* operator new(size_t sz) {
     static char buf[255];
-    assert(sz < sizeof(buf));
+    assert(sz <= sizeof(buf));
     return buf;
   }
   void operator delete(void*) {}
@@ -151,16 +150,18 @@ struct PtrEnumerator : ObjPtrEnumerator {
 
 //////////////////////////////////////////////////////////////////////////
 
-class ClassInfo {
+class ClassMeta {
  public:
   enum class State : unsigned char { Unregistered, Registered };
   enum class MemRequest { Alloc, Dctor, Dealloc, NewPtrEnumerator };
-  typedef void* (*MemHandler)(ClassInfo* cls, MemRequest r, void* param);
+  using MemHandler = void* (*)(ClassMeta* cls, MemRequest r, void* param);
+  using OffsetType = unsigned short;
+  using SizeType = unsigned short;
 
   MemHandler memHandler = nullptr;
-  vector<short>* subPtrOffsets = nullptr;
-  State state : 1;
-  unsigned short size : sizeof(unsigned short) * 8 - 1;
+  vector<OffsetType>* subPtrOffsets = nullptr;
+  State state;
+  SizeType size;
 
 #ifdef TGC_MULTI_THREADED
   shared_mutex mutex;
@@ -169,12 +170,12 @@ class ClassInfo {
 #endif
 
   static atomic<int> isCreatingObj;
-  static ClassInfo Empty;
+  static ClassMeta dummy;
 
-  ClassInfo() : size(0) {}
-  ClassInfo(MemHandler h, int sz)
+  ClassMeta() : size(0) {}
+  ClassMeta(MemHandler h, SizeType sz)
       : memHandler(h), size(sz), state(State::Unregistered) {}
-  ~ClassInfo() { delete subPtrOffsets; }
+  ~ClassMeta() { delete subPtrOffsets; }
 
   ObjMeta* newMeta(size_t objCnt);
   void registerSubPtr(ObjMeta* owner, PtrBase* p);
@@ -184,14 +185,14 @@ class ClassInfo {
   }
 
   template <typename T>
-  static ClassInfo* get() {
+  static ClassMeta* get() {
     return &Holder<T>::inst;
   }
 
  private:
   template <typename T>
   struct Holder {
-    static void* MemHandler(ClassInfo* cls, MemRequest r, void* param) {
+    static void* MemHandler(ClassMeta* cls, MemRequest r, void* param) {
       switch (r) {
         case MemRequest::Alloc: {
           auto cnt = (size_t)param;
@@ -217,15 +218,15 @@ class ClassInfo {
       return nullptr;
     }
 
-    static ClassInfo inst;
+    static ClassMeta inst;
   };
 };
 
 template <typename T>
-ClassInfo ClassInfo::Holder<T>::inst{MemHandler, sizeof(T)};
+ClassMeta ClassMeta::Holder<T>::inst{MemHandler, sizeof(T)};
 
 #ifndef TGC_MULTI_THREADED
-static_assert(sizeof(ClassInfo) <= sizeof(void*) * 3,
+static_assert(sizeof(ClassMeta) <= sizeof(void*) * 3,
               "too large for lambda heavy programs");
 #endif
 
@@ -233,7 +234,7 @@ static_assert(sizeof(ClassInfo) <= sizeof(void*) * 3,
 
 class PtrBase {
   friend class Collector;
-  friend class ClassInfo;
+  friend class ClassMeta;
 
  public:
   ObjMeta* getMeta() { return meta; }
@@ -253,8 +254,8 @@ class PtrBase {
 template <typename T>
 class GcPtr : public PtrBase {
  public:
-  typedef T pointee;
-  typedef T element_type;  // compatible with std::shared_ptr
+  using pointee = T;
+  using element_type = T;  // compatible with std::shared_ptr
 
   template <typename U>
   friend class GcPtr;
@@ -297,11 +298,8 @@ class GcPtr : public PtrBase {
   explicit operator bool() const { return p && meta; }
   bool operator==(const GcPtr& r) const { return meta == r.meta; }
   bool operator!=(const GcPtr& r) const { return meta != r.meta; }
-  GcPtr& operator=(T* ptr) {
-    reset(ptr, Collector::inst->globalFindOwnerMeta(ptr));
-    return *this;
-  }
-  GcPtr& operator=(decltype(nullptr)) {
+  GcPtr& operator=(T* ptr) = delete;
+  GcPtr& operator=(nullptr_t) {
     meta = 0;
     p = 0;
     return *this;
@@ -348,6 +346,9 @@ class gc : public GcPtr<T> {
 //////////////////////////////////////////////////////////////////////////
 
 class Collector {
+  friend class ClassMeta;
+  friend class PtrBase;
+
  public:
   static Collector* get();
   void onPointerChanged(PtrBase* p);
@@ -368,9 +369,7 @@ class Collector {
   void addMeta(ObjMeta* meta);
 
  private:
-  typedef set<ObjMeta*, ObjMeta::Less> MetaSet;
-  friend class ClassInfo;
-  friend class PtrBase;
+  using MetaSet = set<ObjMeta*, ObjMeta::Less>;
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
@@ -395,7 +394,7 @@ inline void gc_dumpStats() {
 
 template <typename T, typename... Args>
 ObjMeta* gc_new_meta(size_t len, Args&&... args) {
-  auto* cls = ClassInfo::get<T>();
+  auto* cls = ClassMeta::get<T>();
   auto* meta = cls->newMeta(len);
 
   size_t i = 0;

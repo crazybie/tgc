@@ -8,12 +8,11 @@ namespace tgc {
 namespace details {
 
 #ifndef TGC_MULTI_THREADED
-shared_mutex ClassInfo::mutex;
+shared_mutex ClassMeta::mutex;
 #endif
-
-atomic<int> ClassInfo::isCreatingObj = 0;
-ClassInfo ClassInfo::Empty;
-char* ObjMeta::dummyObjPtr = 0;
+atomic<int> ClassMeta::isCreatingObj = 0;
+ClassMeta ClassMeta::dummy;
+char* ObjMeta::dummyObjPtr = nullptr;
 Collector* Collector::inst = nullptr;
 
 static const char* StateStr[(int)Collector::State::MaxCnt] = {
@@ -22,44 +21,45 @@ static const char* StateStr[(int)Collector::State::MaxCnt] = {
 //////////////////////////////////////////////////////////////////////////
 
 char* ObjMeta::objPtr() const {
-  return clsInfo == &ClassInfo::Empty ? dummyObjPtr
-                                      : (char*)this + sizeof(ObjMeta);
+  return klass == &ClassMeta::dummy ? dummyObjPtr
+                                    : (char*)this + sizeof(ObjMeta);
 }
 
 void ObjMeta::destroy() {
   if (!arrayLength)
     return;
-  clsInfo->memHandler(clsInfo, ClassInfo::MemRequest::Dctor, this);
+  klass->memHandler(klass, ClassMeta::MemRequest::Dctor, this);
   arrayLength = 0;
 }
 
-void ObjMeta::operator delete(void* c) {
-  auto* p = (ObjMeta*)c;
-  p->clsInfo->memHandler(p->clsInfo, ClassInfo::MemRequest::Dealloc, p);
+void ObjMeta::operator delete(void* p) {
+  auto* m = (ObjMeta*)p;
+  m->klass->memHandler(m->klass, ClassMeta::MemRequest::Dealloc, m);
 }
 
 bool ObjMeta::operator<(ObjMeta& r) const {
-  return objPtr() + clsInfo->size * arrayLength <
-         r.objPtr() + r.clsInfo->size * r.arrayLength;
+  return objPtr() + klass->size * arrayLength <
+         r.objPtr() + r.klass->size * r.arrayLength;
 }
 
 bool ObjMeta::containsPtr(char* p) {
-  return objPtr() <= p && p < objPtr() + clsInfo->size * arrayLength;
+  auto* o = objPtr();
+  return o <= p && p < o + klass->size * arrayLength;
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 bool ObjPtrEnumerator::hasNext() {
-  if (auto* subPtrs = meta->clsInfo->subPtrOffsets)
+  if (auto* subPtrs = meta->klass->subPtrOffsets)
     return arrayElemIdx < arrayLength && subPtrIdx < subPtrs->size();
   return false;
 }
 
 const PtrBase* ObjPtrEnumerator::getNext() {
-  auto* clsInfo = meta->clsInfo;
-  auto* obj = meta->objPtr() + arrayElemIdx * clsInfo->size;
-  auto* subPtr = obj + (*clsInfo->subPtrOffsets)[subPtrIdx];
-  if (subPtrIdx++ >= clsInfo->subPtrOffsets->size())
+  auto* klass = meta->klass;
+  auto* obj = meta->objPtr() + arrayElemIdx * klass->size;
+  auto* subPtr = obj + (*klass->subPtrOffsets)[subPtrIdx];
+  if (subPtrIdx++ >= klass->subPtrOffsets->size())
     arrayElemIdx++;
   return (PtrBase*)subPtr;
 }
@@ -73,8 +73,8 @@ PtrBase::PtrBase() : meta(0), isRoot(1) {
 
 PtrBase::PtrBase(void* obj) : isRoot(1) {
   auto* c = Collector::inst ? Collector::inst : Collector::get();
-  c->registerPtr(this);
   meta = c->globalFindOwnerMeta(obj);
+  c->registerPtr(this);
 }
 
 PtrBase::~PtrBase() {
@@ -87,17 +87,14 @@ void PtrBase::onPtrChanged() {
 
 //////////////////////////////////////////////////////////////////////////
 
-ObjMeta* ClassInfo::newMeta(size_t objCnt) {
+ObjMeta* ClassMeta::newMeta(size_t objCnt) {
   assert(memHandler && "should not be called in global scope (before main)");
-
-  auto* c = Collector::inst ? Collector::inst : Collector::get();
-
-  auto meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
-                                   reinterpret_cast<void*>(objCnt));
+  auto* meta = (ObjMeta*)memHandler(this, MemRequest::Alloc,
+                                    reinterpret_cast<void*>(objCnt));
 
   try {
-    // register meta so the constructor of pointers can find the owner later via
-    // gc_from(this).
+    auto* c = Collector::inst ? Collector::inst : Collector::get();
+    // Allow using gc_from(this) in the constructor of the creating object.
     c->addMeta(meta);
   } catch (std::bad_alloc&) {
     memHandler(this, MemRequest::Dealloc, meta);
@@ -108,11 +105,11 @@ ObjMeta* ClassInfo::newMeta(size_t objCnt) {
   return meta;
 }
 
-void ClassInfo::endNewMeta(ObjMeta* meta, bool failed) {
+void ClassMeta::endNewMeta(ObjMeta* meta, bool failed) {
   isCreatingObj--;
   if (!failed) {
     unique_lock lk{mutex};
-    state = ClassInfo::State::Registered;
+    state = ClassMeta::State::Registered;
   }
 
   {
@@ -126,12 +123,12 @@ void ClassInfo::endNewMeta(ObjMeta* meta, bool failed) {
   }
 }
 
-void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
-  short offset = (decltype(offset))((char*)p - owner->objPtr());
+void ClassMeta::registerSubPtr(ObjMeta* owner, PtrBase* p) {
+  auto offset = (OffsetType)((char*)p - owner->objPtr());
 
   {
     shared_lock lk{mutex};
-    if (state == ClassInfo::State::Registered)
+    if (state == ClassMeta::State::Registered)
       return;
 
     // constructor recursed.
@@ -141,7 +138,7 @@ void ClassInfo::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 
   unique_lock lk{mutex};
   if (!subPtrOffsets)
-    subPtrOffsets = new vector<short>();
+    subPtrOffsets = new vector<OffsetType>();
   subPtrOffsets->push_back(offset);
 }
 
@@ -184,10 +181,10 @@ void Collector::registerPtr(PtrBase* p) {
     pointers.push_back(p);
   }
 
-  if (ClassInfo::isCreatingObj > 0) {
+  if (ClassMeta::isCreatingObj > 0) {
     if (auto* owner = findCreatingObj(p)) {
       p->isRoot = 0;
-      owner->clsInfo->registerSubPtr(owner, p);
+      owner->klass->registerSubPtr(owner, p);
     }
   }
 }
@@ -205,24 +202,15 @@ void Collector::unregisterPtr(PtrBase* p) {
       pointer = pointers[p->index];
       pointer->index = p->index;
       pointers.pop_back();
-      if (!pointer->meta)
-        return;
     }
   }
-
-  // changing of pointers may affect the rootMarking
-  shared_lock lk{mutex, try_to_lock};
-  if (state == State::RootMarking) {
-    if (p->index < nextRootMarking) {
-      tryMarkRoot(pointer);
-    }
-  }
+  onPointerChanged(p);
 }
 
 void Collector::tryMarkRoot(PtrBase* p) {
   if (p->isRoot == 1) {
-    if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
-      p->meta->markState = ObjMeta::MarkColor::Gray;
+    if (p->meta->color == ObjMeta::Color::White) {
+      p->meta->color = ObjMeta::Color::Gray;
 
       unique_lock lk{mutex, try_to_lock};
       grayObjs.push_back(p->meta);
@@ -237,19 +225,16 @@ void Collector::onPointerChanged(PtrBase* p) {
   shared_lock lk{mutex, try_to_lock};
   switch (state) {
     case State::RootMarking:
-      if (p->index < nextRootMarking)
-        tryMarkRoot(p);
-      break;
     case State::ChildMarking:
       tryMarkRoot(p);
       break;
     case State::Sweeping:
-      if (p->meta->markState == ObjMeta::MarkColor::Unmarked) {
+      if (p->meta->color == ObjMeta::Color::White) {
         if (*p->meta < **nextSweeping) {
-          // already white and ready for the next rootMarking.
+          // already passed sweeping stage.
         } else {
-          // mark it alive to bypass sweeping.
-          p->meta->markState = ObjMeta::MarkColor::Alive;
+          // delay to the next collection.
+          p->meta->color = ObjMeta::Color::Black;
         }
       }
       break;
@@ -269,7 +254,7 @@ ObjMeta* Collector::findCreatingObj(PtrBase* p) {
 ObjMeta* Collector::globalFindOwnerMeta(void* obj) {
   shared_lock lk{mutex, try_to_lock};
 
-  ObjMeta dummyMeta(&ClassInfo::Empty, 0, 0);
+  ObjMeta dummyMeta(&ClassMeta::dummy, 0, 0);
   dummyMeta.dummyObjPtr = (char*)obj;
   auto i = metaSet.lower_bound(&dummyMeta);
   if (i != metaSet.end() && (*i)->containsPtr((char*)obj)) {
@@ -292,7 +277,7 @@ void Collector::collect(int stepCnt) {
       if (!meta)
         continue;
       // for containers
-      auto it = meta->clsInfo->enumPtrs(meta);
+      auto it = meta->klass->enumPtrs(meta);
       for (; it->hasNext();) {
         it->getNext()->isRoot = 0;
       }
@@ -311,16 +296,16 @@ void Collector::collect(int stepCnt) {
     while (grayObjs.size() && stepCnt-- > 0) {
       ObjMeta* o = grayObjs.back();
       grayObjs.pop_back();
-      o->markState = ObjMeta::MarkColor::Alive;
+      o->color = ObjMeta::Color::Black;
 
-      auto cls = o->clsInfo;
+      auto cls = o->klass;
       auto it = cls->enumPtrs(o);
       for (; it->hasNext(); stepCnt--) {
         auto* ptr = it->getNext();
         auto* meta = ptr->meta;
         if (!meta)
           continue;
-        if (meta->markState == ObjMeta::MarkColor::Unmarked) {
+        if (meta->color == ObjMeta::Color::White) {
           grayObjs.push_back(meta);
         }
       }
@@ -337,12 +322,12 @@ void Collector::collect(int stepCnt) {
   case State::Sweeping:
     for (; nextSweeping != metaSet.end() && stepCnt-- > 0;) {
       ObjMeta* meta = *nextSweeping;
-      if (meta->markState == ObjMeta::MarkColor::Unmarked) {
+      if (meta->color == ObjMeta::Color::White) {
         nextSweeping = metaSet.erase(nextSweeping);
         delete meta;
         continue;
       }
-      meta->markState = ObjMeta::MarkColor::Unmarked;
+      meta->color = ObjMeta::Color::White;
       ++nextSweeping;
     }
     if (nextSweeping == metaSet.end()) {

@@ -292,7 +292,7 @@ void testException() {
   }
   assert(err);
   assert(c.dctorCnt == c.len - 1);
-  assert(details::ClassInfo::get<Test>()->isCreatingObj == 0);
+  assert(details::ClassMeta::get<Test>()->isCreatingObj == 0);
 }
 
 void testCollection() {
@@ -354,7 +354,7 @@ int main() {
   testHashMap();
   testLambda();
 
-  // there are some objects leaking from the upper tests, just dump them
+  // there are some objects leaked from the upper tests, just dump them
   // out.
   gc_dumpStats();
   gc_collect();
