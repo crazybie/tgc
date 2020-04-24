@@ -50,7 +50,7 @@
 - A GC pointer is with the size of 3-pointers:
     - one flag determin whether it's root or not.
     - an index for fast unregistering from collector.
-    - one raw pointer to the object and one pointer to the correspoinding meta-object to support:
+    - one raw pointer to the object and another one raw pointer to the correspoinding meta-object, this is to support:
         - multiple inheritance.
         - pointer to fields of other object, aka internal pointer.
 - Every class has a global meta-object keeping the necessary meta-information (e.g. class size and offsets of member pointers) used by GC, so programs using lambdas heavily may have some memory overhead. Besides, as the initialization order of global objects is not well defined, you should not use GC pointers as global variables too. Don't worry, inside the system, there is an assert checking this rule.
