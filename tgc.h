@@ -317,6 +317,8 @@ class GcPtr : public PtrBase {
   T* p;
 };
 
+static_assert(sizeof(GcPtr<int>) <= sizeof(void*) * 3);
+
 template <typename T>
 class gc : public GcPtr<T> {
   using base = GcPtr<T>;
