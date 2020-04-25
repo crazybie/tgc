@@ -83,7 +83,7 @@
 
 ### Usage
 
-Please see the tests in 'test.cpp'
+Please see the tests in 'test.cpp'.
 Another small demo here: https://github.com/crazybie/AsioTest.git
 
 ### Refs
