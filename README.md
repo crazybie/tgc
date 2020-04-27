@@ -64,7 +64,7 @@
 - To make objects in proper tracing chain, you must use GC wrappers of STL containers instead, otherwise, memory leaks may occur.
 - gc_vector stores pointers of elements making its storage not continuous as a standard vector, this is necessary for the GC. All wrapped containers of STL stores GC pointers as elements.
 - You can manually call gc_delete to trigger the destructor of an object and let the GC claim the memory automatically. Besides, double free is also safe.
-- For the multi-threaded version, the collection function should be invoked to run in the main thread therefore the destructors can be triggered in the main thread as well.
+- For the multi-threaded version, the collection function should be invoked from the main thread therefore the destructors can be triggered in the main thread as well.
 
 
 ### Performance Advice
