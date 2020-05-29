@@ -310,7 +310,8 @@ class GcPtr : public PtrBase {
   T* p = nullptr;
 };
 
-static_assert(sizeof(GcPtr<int>) <= sizeof(void*) * 3);
+static_assert(sizeof(GcPtr<int>) <= sizeof(void*) * 3,
+              "too large for small object");
 
 template <typename T>
 class gc : public GcPtr<T> {

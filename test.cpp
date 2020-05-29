@@ -1,9 +1,10 @@
-#include "tgc.h"
-
 #include <assert.h>
+
 #include <chrono>
 #include <iostream>
 #include <string_view>
+
+#include "tgc.h"
 
 using namespace tgc;
 using namespace std;
@@ -307,7 +308,7 @@ void testCollection() {
       s->child = s;
     }
     gc_dumpStats();
-    gc_collect(cnt * 2);
+    gc_collect(cnt * 5);
     gc_dumpStats();
   }
 }
@@ -332,6 +333,7 @@ void profileAlloc() {
   for (auto* i : rawPtrs)
     delete i;
   gc_collect(profilingCounts * 2);
+  gc_dumpStats();
 #endif
 }
 
@@ -345,7 +347,7 @@ int main() {
   testPrimaryImplicitCtor();
   testSet();
   testEmpty();
-  testPointerCast();
+  // testPointerCast();
   testMoveCtor();
   testCirc();
   testArray();
