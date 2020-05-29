@@ -49,19 +49,18 @@ bool ObjMeta::containsPtr(char* p) {
 
 //////////////////////////////////////////////////////////////////////////
 
-bool ObjPtrEnumerator::hasNext() {
-  if (auto* subPtrs = meta->klass->subPtrOffsets)
-    return arrayElemIdx < meta->arrayLength && subPtrIdx < subPtrs->size();
-  return false;
-}
-
 const PtrBase* ObjPtrEnumerator::getNext() {
-  auto* klass = meta->klass;
-  auto* obj = meta->objPtr() + arrayElemIdx * klass->size;
-  auto* subPtr = obj + (*klass->subPtrOffsets)[subPtrIdx];
-  if (subPtrIdx++ >= klass->subPtrOffsets->size())
-    arrayElemIdx++;
-  return (PtrBase*)subPtr;
+  if (auto* subPtrs = meta->klass->subPtrOffsets) {
+    if (arrayElemIdx < meta->arrayLength && subPtrIdx < subPtrs->size()) {
+      auto* klass = meta->klass;
+      auto* obj = meta->objPtr() + arrayElemIdx * klass->size;
+      auto* subPtr = obj + (*klass->subPtrOffsets)[subPtrIdx];
+      if (subPtrIdx++ >= klass->subPtrOffsets->size())
+        arrayElemIdx++;
+      return (PtrBase*)subPtr;
+    }
+  }
+  return nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -147,6 +146,7 @@ void ClassMeta::registerSubPtr(ObjMeta* owner, PtrBase* p) {
 Collector::Collector() {
   pointers.reserve(1024 * 5);
   grayObjs.reserve(1024 * 2);
+  metaSet.reserve(1024 * 5);
 }
 
 Collector::~Collector() {
@@ -240,12 +240,12 @@ void Collector::onPointerChanged(PtrBase* p) {
       break;
     case State::Sweeping:
       if (p->meta->color == ObjMeta::Color::White) {
-        if (*p->meta < **nextSweeping) {
-          // already passed sweeping stage.
-        } else {
-          // delay to the next collection.
-          p->meta->color = ObjMeta::Color::Black;
-        }
+        // if (*p->meta < **nextSweeping) {
+        // already passed sweeping stage.
+        //} else {
+        // delay to the next collection.
+        p->meta->color = ObjMeta::Color::Black;
+        //}
       }
       break;
   }
@@ -263,19 +263,14 @@ ObjMeta* Collector::findCreatingObj(PtrBase* p) {
 
 ObjMeta* Collector::globalFindOwnerMeta(void* obj) {
   shared_lock lk{mutex, try_to_lock};
-
-  ObjMeta dummyMeta(&ClassMeta::dummy, 0, 0);
-  dummyMeta.dummyObjPtr = (char*)obj;
-  auto i = metaSet.lower_bound(&dummyMeta);
-  if (i != metaSet.end() && (*i)->containsPtr((char*)obj)) {
-    return *i;
-  } else {
-    return nullptr;
-  }
+  auto* meta = (ObjMeta*)((char*)obj - sizeof(ObjMeta));
+  return meta;
 }
 
 void Collector::collect(int stepCnt) {
   unique_lock lk{mutex};
+
+  freeObjCntOfPrevGc = 0;
 
   switch (state) {
   _RootMarking:
@@ -288,8 +283,8 @@ void Collector::collect(int stepCnt) {
         continue;
       // for containers
       auto it = meta->klass->enumPtrs(meta);
-      for (; it->hasNext();) {
-        it->getNext()->isRoot = 0;
+      for (; auto* ptr = it->getNext(); stepCnt--) {
+        ptr->isRoot = 0;
       }
       delete it;
       tryMarkRoot(p);
@@ -310,8 +305,7 @@ void Collector::collect(int stepCnt) {
 
       auto cls = o->klass;
       auto it = cls->enumPtrs(o);
-      for (; it->hasNext(); stepCnt--) {
-        auto* ptr = it->getNext();
+      for (; auto* ptr = it->getNext(); stepCnt--) {
         auto* meta = ptr->meta;
         if (!meta)
           continue;
@@ -336,6 +330,7 @@ void Collector::collect(int stepCnt) {
       if (meta->color == ObjMeta::Color::White) {
         nextSweeping = metaSet.erase(nextSweeping);
         delete meta;
+        freeObjCntOfPrevGc++;
         continue;
       }
       meta->color = ObjMeta::Color::White;
@@ -362,6 +357,7 @@ void Collector::dumpStats() {
     if (i->arrayLength)
       liveCnt++;
   printf("[live objects   ] %3d\n", liveCnt);
+  printf("[last freed objs] %3d\n", freeObjCntOfPrevGc);
   printf("[collector state] %s\n", StateStr[(int)state]);
   printf("=======================\n");
 }

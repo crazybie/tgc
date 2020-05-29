@@ -45,6 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace tgc {
 namespace details {
@@ -116,7 +117,6 @@ static_assert(sizeof(ObjMeta) <= sizeof(void*) * 2,
 class IPtrEnumerator {
  public:
   virtual ~IPtrEnumerator() {}
-  virtual bool hasNext() = 0;
   virtual const PtrBase* getNext() = 0;
 
   void* operator new(size_t sz) {
@@ -133,7 +133,6 @@ class ObjPtrEnumerator : public IPtrEnumerator {
 
  public:
   ObjPtrEnumerator(ObjMeta* m) : meta(m) {}
-  bool hasNext() override;
   const PtrBase* getNext() override;
 };
 
@@ -364,7 +363,7 @@ class Collector {
   void addMeta(ObjMeta* meta);
 
  private:
-  using MetaSet = set<ObjMeta*, ObjMeta::Less>;
+  using MetaSet = unordered_set<ObjMeta*>;
 
   vector<PtrBase*> pointers;
   vector<ObjMeta*> grayObjs;
@@ -375,6 +374,7 @@ class Collector {
   size_t nextRootMarking = 0;
   State state = State::RootMarking;
   shared_mutex mutex;
+  int freeObjCntOfPrevGc;
 
   static Collector* inst;
 };
@@ -502,7 +502,7 @@ struct ContainerPtrEnumerator : IPtrEnumerator {
   C* o;
   typename C::iterator it;
   ContainerPtrEnumerator(ObjMeta* m) : o((C*)m->objPtr()), it(o->begin()) {}
-  bool hasNext() override { return it != o->end(); }
+  bool hasNext() { return it != o->end(); }
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -521,7 +521,11 @@ template <typename T>
 struct PtrEnumerator<vector<gc<T>>> : ContainerPtrEnumerator<vector<gc<T>>> {
   using ContainerPtrEnumerator<vector<gc<T>>>::ContainerPtrEnumerator;
 
-  const PtrBase* getNext() override { return &*this->it++; }
+  const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
+    return &*this->it++;
+  }
 };
 
 template <typename T, typename... Args>
@@ -551,7 +555,11 @@ template <typename T>
 struct PtrEnumerator<deque<gc<T>>> : ContainerPtrEnumerator<deque<gc<T>>> {
   using ContainerPtrEnumerator<deque<gc<T>>>::ContainerPtrEnumerator;
 
-  const PtrBase* getNext() override { return &*this->it++; }
+  const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
+    return &*this->it++;
+  }
 };
 
 template <typename T, typename... Args>
@@ -577,7 +585,11 @@ template <typename T>
 struct PtrEnumerator<list<gc<T>>> : ContainerPtrEnumerator<list<gc<T>>> {
   using ContainerPtrEnumerator<list<gc<T>>>::ContainerPtrEnumerator;
 
-  const PtrBase* getNext() override { return &*this->it++; }
+  const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
+    return &*this->it++;
+  }
 };
 
 template <typename T, typename... Args>
@@ -609,6 +621,8 @@ struct PtrEnumerator<map<K, gc<V>>> : ContainerPtrEnumerator<map<K, gc<V>>> {
   using ContainerPtrEnumerator<map<K, gc<V>>>::ContainerPtrEnumerator;
 
   const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
     auto* ret = &this->it->second;
     ++this->it;
     return ret;
@@ -645,6 +659,8 @@ struct PtrEnumerator<unordered_map<K, gc<V>>>
   using ContainerPtrEnumerator<unordered_map<K, gc<V>>>::ContainerPtrEnumerator;
 
   const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
     auto* ret = &this->it->second;
     ++this->it;
     return ret;
@@ -673,7 +689,11 @@ template <typename V>
 struct PtrEnumerator<set<gc<V>>> : ContainerPtrEnumerator<set<gc<V>>> {
   using ContainerPtrEnumerator<set<gc<V>>>::ContainerPtrEnumerator;
 
-  const PtrBase* getNext() override { return &*this->it++; }
+  const PtrBase* getNext() override {
+    if (!this->hasNext())
+      return nullptr;
+    return &*this->it++;
+  }
 };
 
 template <typename V, typename... Args>
