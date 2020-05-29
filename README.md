@@ -92,6 +92,13 @@ Another small demo here: https://github.com/crazybie/AsioTest.git
 - Boehn GC: https://github.com/ivmai/bdwgc/
 - Oilpan GC: https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/platform/heap/BlinkGCDesign.md#Threading-model
 
+### TODO
+
+- move & compact
+    sine we manages raw pointers in pointer object, we can move the object and adjust the raw pointers internally.
+- use generatioinal algorithm
+    no need to scan all objects every time when do garbage collecting.
+
 ### License
 
 The MIT License
